@@ -12,7 +12,8 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"], # Next.js 的默认地址
+    allow_origins=["http://localhost:3000",
+                   "https://cry-ai-agent.vercel.app"], # Next.js 的默认地址
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
