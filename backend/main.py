@@ -1,10 +1,14 @@
+import os
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from openai import AsyncOpenAI
 from pydantic import BaseModel
+
+load_dotenv()
 
 app = FastAPI()
 
-# ⚠️ 关键：允许前端跨域访问
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"], # Next.js 的默认地址
@@ -17,13 +21,29 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     message: str
 
+client = AsyncOpenAI(
+    api_key=os.getenv("DEEPSEEK_API_KEY"),
+    base_url="https://api.deepseek.com" # DeepSeek 的服务器地址
+)
+
+
 @app.get("/")
 def read_root():
     return {"status": "Backend is running!"}
 
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatRequest):
-    # 这里以后会写调用 DeepSeek 或 OpenAI 的逻辑
-    user_text = request.message
-    ai_reply = f"这是来自 FastAPI 的回复。你刚才说的是：{user_text}"
-    return {"reply": ai_reply}
+    try:
+        response = await client.chat.completions.create(
+            model="deepseek-chat", 
+            messages=[
+                    {"role": "system", "content": "你是一个有用的 AI 助手。"},
+                    {"role": "user", "content": request.message},
+                ],
+                stream=False 
+        )
+        ai_reply = response.choices[0].message.content
+        return {"reply": ai_reply}
+    except Exception as e:
+        print(f"Error: {e}")
+        return {"reply": "哎呀，AI 脑子断词了，请检查网络或 API Key。"}
