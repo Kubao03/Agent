@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
@@ -33,17 +34,17 @@ def read_root():
 
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatRequest):
-    try:
+    async def event_generator():
         response = await client.chat.completions.create(
             model="deepseek-chat", 
             messages=[
                     {"role": "system", "content": "你是一个有用的 AI 助手。"},
                     {"role": "user", "content": request.message},
                 ],
-                stream=False 
+                stream=True 
         )
-        ai_reply = response.choices[0].message.content
-        return {"reply": ai_reply}
-    except Exception as e:
-        print(f"Error: {e}")
-        return {"reply": "哎呀，AI 脑子断词了，请检查网络或 API Key。"}
+        async for chunk in response:
+            content = chunk.choices[0].delta.content
+            if content:
+                yield content
+    return StreamingResponse(event_generator(), media_type="text/event-stream")

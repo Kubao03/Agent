@@ -8,14 +8,29 @@ export default function ChatPage() {
   const [chatLog, setChatLog] = useState(""); // 存储后端回传的内容
 
   const handleSend = async () => {
+  if (!input.trim()) return;
+  setChatLog(""); // 先清空上次的回复
+
   const response = await fetch("http://localhost:8000/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message: input }), // 把输入的内容打包
   });
-  
-  const data = await response.json();
-  setChatLog(data.reply); // 把后端的 reply 显示在屏幕上
+  if (!response.body) return;
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let done = false;
+  let accumulatedResponse = "";
+
+  while (!done) {
+    const { value, done: doneReading } = await reader.read();
+    done = doneReading;
+    if (value) {
+      const chunkValue = decoder.decode(value);
+      accumulatedResponse += chunkValue;
+      setChatLog(accumulatedResponse); // 实时更新聊天记录
+    }
+  }
 };
 
   return (
