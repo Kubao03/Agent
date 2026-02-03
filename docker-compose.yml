@@ -1,0 +1,34 @@
+services:
+  # 后端服务
+  backend:
+    build: ./backend
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    # 关键：将本地的 .env 映射进去，保护 API Key
+    env_file:
+      - ./backend/.env
+    # 挂载卷：让你在宿主机修改代码，容器内立刻生效（热更新）
+    volumes:
+      - ./backend:/app
+    networks:
+      - ai-network
+
+  # 前端服务
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules # 避免本地 node_modules 覆盖容器内的
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    networks:
+      - ai-network
+    depends_on:
+      - backend
+
+networks:
+  ai-network:
+    driver: bridge
