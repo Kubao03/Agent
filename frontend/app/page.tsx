@@ -10,8 +10,8 @@ export default function ChatPage() {
   const handleSend = async () => {
   if (!input.trim()) return;
   setChatLog(""); // 先清空上次的回复
-
-  const response = await fetch("http://localhost:8000/api/chat", {
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const response = await fetch(`${API_URL}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message: input }), // 把输入的内容打包
