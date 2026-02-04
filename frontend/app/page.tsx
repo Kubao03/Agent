@@ -2,6 +2,10 @@
 "use client"; // 声明这是一个在浏览器跑的“客户端组件”，因为我们要处理点击和输入
 
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 export default function ChatPage() {
   const [input, setInput] = useState(""); // 存储你输入的内容
@@ -34,12 +38,48 @@ export default function ChatPage() {
 };
 
   return (
-    <div className="p-10 flex flex-col gap-4 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold text-blue-600">我的第一个 Agent 前端</h1>
+    <div className="p-8 md:p-10 flex flex-col gap-6 max-w-4xl mx-auto min-h-screen">
+      <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+        我的第一个 Agent 前端
+      </h1>
       
-      <div className="border p-4 h-64 bg-gray-50 rounded">
+      <div className="border p-4 min-h-[400px] max-h-[600px] bg-gray-50 rounded overflow-y-auto">
         <p className="text-gray-600">AI 回复：</p>
-        <div className="mt-2 p-2 bg-white border rounded">{chatLog}</div>
+        <div className="prose prose-blue max-w-none bg-white p-4 border rounded shadow-sm
+                prose-pre:bg-transparent prose-pre:p-0 prose-pre:m-0 prose-pre:shadow-none">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              code({ node, inline, className, children, ...props }: any) {
+                const match = /language-(\w+)/.exec(className || "");
+                return !inline && match ? (
+                  <SyntaxHighlighter
+                    style={oneLight}
+                    language={match[1]}
+                    PreTag="div"
+                    customStyle={{
+                      margin: 0,
+                      padding: '1.5rem',
+                      backgroundColor: '#f8f9fa',
+                      fontSize: '0.9rem',
+                      borderRadius: '0.5rem',
+                      border: 'none',
+                    }}  
+                    {...props}
+                  >
+                    {String(children).replace(/\n$/, "")}
+                  </SyntaxHighlighter>
+                ) : (
+                  <code className={className} {...props}>
+                    {children}
+                  </code>
+                );
+              },
+            }}
+          >
+            {chatLog}
+          </ReactMarkdown>
+        </div>
       </div>
 
       <div className="flex gap-2">

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 :root {
   --background: #ffffff;
@@ -23,4 +24,20 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* 强制移除代码块的所有边框 */
+.prose pre,
+.prose pre code,
+.prose pre div,
+.prose pre[class*="language-"],
+.prose code[class*="language-"],
+div[class*="language-"],
+pre[class*="language-"],
+code[class*="language-"] {
+  border: none !important;
+  border-width: 0 !important;
+  border-style: none !important;
+  outline: none !important;
+  box-shadow: none !important;
 }
