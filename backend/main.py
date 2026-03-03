@@ -13,21 +13,23 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000",
-                   "https://cry-ai-agent.vercel.app"], # Next.js 的默认地址
+                   "https://cry-ai-agent.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 定义数据格式（类似于 Java 的 DTO）
+class Message(BaseModel):
+    role: str
+    content: str
+
 class ChatRequest(BaseModel):
-    message: str
+    messages: list[Message]
 
 client = AsyncOpenAI(
     api_key=os.getenv("DEEPSEEK_API_KEY"),
-    base_url="https://api.deepseek.com" # DeepSeek 的服务器地址
+    base_url="https://api.deepseek.com"
 )
-
 
 @app.get("/")
 def read_root():
@@ -36,16 +38,18 @@ def read_root():
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatRequest):
     async def event_generator():
+        full_messages = [
+            {"role": "system", "content": "你是一个有用的 AI 助手。"}
+        ] + [{"role": m.role, "content": m.content} for m in request.messages]
+
         response = await client.chat.completions.create(
-            model="deepseek-chat", 
-            messages=[
-                    {"role": "system", "content": "你是一个有用的 AI 助手。"},
-                    {"role": "user", "content": request.message},
-                ],
-                stream=True 
+            model="deepseek-chat",
+            messages=full_messages,
+            stream=True
         )
         async for chunk in response:
             content = chunk.choices[0].delta.content
             if content:
                 yield content
+
     return StreamingResponse(event_generator(), media_type="text/event-stream")
