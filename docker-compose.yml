@@ -24,6 +24,7 @@ services:
       - /app/node_modules # 避免本地 node_modules 覆盖容器内的
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NODE_PATH=/app/node_modules
     networks:
       - ai-network
     depends_on:
