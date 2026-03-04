@@ -1,6 +1,6 @@
 # AI Agent Chat
 
-A fullstack AI chat application with streaming responses and multi-turn conversation support.
+A fullstack AI Agent application with tool calling, streaming responses, and thinking process visualization.
 
 **Live demo:** https://cry-ai-agent.vercel.app
 
@@ -10,28 +10,38 @@ A fullstack AI chat application with streaming responses and multi-turn conversa
 |---|---|
 | Frontend | Next.js 15, TypeScript, Tailwind CSS v4 |
 | Backend | FastAPI, Python |
-| AI | DeepSeek API (OpenAI-compatible) |
+| AI | Gemini / DeepSeek (switchable) |
+| Agent | LangChain + LangGraph (ReAct agent) |
 | Rendering | react-markdown, react-syntax-highlighter |
 | Deployment | Vercel (frontend) + Railway (backend) |
 
 ## Features
 
-- Multi-turn conversation — full message history sent to the model each turn
-- Streaming responses with typewriter effect
-- Markdown and code block rendering with syntax highlighting
-- Auto-scroll to latest message
-- Duplicate-send prevention during streaming
+- **Tool calling** — agent autonomously decides when to use tools
+- **Thinking process UI** — collapsible panel showing tool calls in real time
+- **Multi-turn conversation** — full message history sent each turn
+- **Streaming responses** — token-by-token output via SSE
+- **Markdown and code rendering** — syntax highlighting with copy button
+- **Structured SSE events** — typed JSON events (text / tool_start / tool_end)
+
+## Tools
+
+| Tool | Source | Use case |
+|---|---|---|
+| Tavily Search | `langchain_tavily` | Real-time news and web search |
+| Wikipedia | `langchain_community` | Encyclopedic knowledge |
+| get_current_time | custom `@tool` | Current date and time |
 
 ## Project Structure
 
 ```
 my-ai-app/
-├── frontend/          # Next.js app
+├── frontend/
 │   └── app/
-│       ├── page.tsx   # Chat UI and streaming logic
+│       ├── page.tsx        # Chat UI, SSE parsing, ThinkingPanel
 │       └── globals.css
 ├── backend/
-│   └── main.py        # FastAPI server, DeepSeek API integration
+│   └── main.py             # FastAPI, LangChain agent, SSE streaming
 ├── docker-compose.yml
 └── README.md
 ```
@@ -42,60 +52,68 @@ my-ai-app/
 
 - Node.js 18+
 - Python 3.11+
-- DeepSeek API key → [platform.deepseek.com](https://platform.deepseek.com)
+- API keys: [DeepSeek](https://platform.deepseek.com) or [Gemini](https://aistudio.google.com), [Tavily](https://app.tavily.com)
 
 ### Local Development
 
-**1. Clone and set up backend**
+**1. Backend**
 
 ```bash
 cd backend
 pip install -r requirements.txt
 
-# Create .env file
-echo "DEEPSEEK_API_KEY=your_key_here" > .env
+# .env
+DEEPSEEK_API_KEY=your_key
+GOOGLE_API_KEY=your_key
+TAVILY_API_KEY=your_key
 
 uvicorn main:app --reload
-# Backend runs at http://localhost:8000
+# http://localhost:8000
 ```
 
-**2. Set up frontend**
+**2. Frontend**
 
 ```bash
 cd frontend
 npm install
 
-# Create .env.local file
-echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > .env.local
+# .env.local
+NEXT_PUBLIC_API_URL=http://localhost:8000
 
 npm run dev
-# Frontend runs at http://localhost:3000
+# http://localhost:3000
 ```
 
-### Docker (one command)
+### Docker
 
 ```bash
-# Add your API key to backend/.env first
 docker compose up --build
 ```
 
 ## API
 
-`POST /api/chat`
+`POST /api/chat` — returns `text/event-stream`
 
+**Request**
 ```json
 {
   "messages": [
-    { "role": "user", "content": "Hello" },
-    { "role": "assistant", "content": "Hi! How can I help?" },
-    { "role": "user", "content": "Write a sort function" }
+    { "role": "user", "content": "今天上海天气怎么样？" }
   ]
 }
 ```
 
-Returns a streaming `text/event-stream` response.
+**SSE Events**
+```
+data: {"type":"tool_start","tool":"tavily_search","query":"上海天气"}
+data: {"type":"tool_end","snippet":"上海今日多云，气温 18°C..."}
+data: {"type":"text","content":"根据"}
+data: {"type":"text","content":"搜索结果"}
+...
+data: [DONE]
+```
 
 ## Deployment
 
-- **Frontend** — deployed on Vercel, set `NEXT_PUBLIC_API_URL` to your backend URL in project settings
-- **Backend** — deployed on Railway, set `DEEPSEEK_API_KEY` as an environment variable
+- **Frontend** — Vercel, set `NEXT_PUBLIC_API_URL` to backend URL
+- **Backend** — Railway, set all API keys as environment variables
