@@ -6,11 +6,34 @@ import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 
+// ─── SSE event types (mirrors backend Pydantic models) ───────────────────────
+
+type TextEvent     = { type: "text";       content: string };
+type ToolStartEvent = { type: "tool_start"; tool: string; query: string };
+type ToolEndEvent  = { type: "tool_end";   snippet: string };
+type SSEEvent = TextEvent | ToolStartEvent | ToolEndEvent;
+
+function parseSSEEvent(raw: string): SSEEvent | null {
+  try {
+    const ev = JSON.parse(raw) as SSEEvent;
+    if (ev.type === "text" || ev.type === "tool_start" || ev.type === "tool_end") return ev;
+  } catch { /* ignore */ }
+  return null;
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+type Step = {
+  tool: string;
+  query: string;
+  snippet?: string;
+  done: boolean;
+};
 
 type Message = {
   role: "user" | "assistant";
   content: string;
+  steps?: Step[];
 };
 
 type InputBoxProps = {
@@ -76,42 +99,94 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
   );
 }
 
-function AssistantMessage({ content }: { content: string }) {
-  if (!content) {
-    return <span className="inline-block w-2 h-5 bg-gray-400 animate-pulse rounded" />;
-  }
+function ThinkingPanel({ steps, isStreaming }: { steps: Step[]; isStreaming: boolean }) {
+  const [open, setOpen] = useState(true);
+  if (steps.length === 0) return null;
+  const allDone = steps.every((s) => s.done);
+
   return (
-    <div className="prose prose-sm max-w-none
-        prose-p:text-gray-900 prose-p:leading-7 prose-p:my-3 prose-p:text-[15px]
-        prose-headings:font-semibold prose-headings:text-gray-900 prose-headings:mt-5 prose-headings:mb-2
-        prose-strong:text-gray-900 prose-strong:font-semibold
-        prose-ul:my-3 prose-ol:my-3 prose-li:my-1 prose-li:text-gray-900 prose-li:text-[15px]
-        prose-code:text-[#e06c75] prose-code:bg-gray-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-code:font-mono prose-code:before:content-[''] prose-code:after:content-['']
-        prose-pre:p-0 prose-pre:bg-transparent prose-pre:my-0 prose-pre:border-none
-        prose-blockquote:border-l-4 prose-blockquote:border-gray-300 prose-blockquote:pl-4 prose-blockquote:text-gray-600 prose-blockquote:italic
-        prose-hr:border-gray-200
-        prose-table:text-sm prose-th:text-gray-900 prose-td:text-gray-700">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          code({ node, inline, className, children, ...props }: any) {
-            const match = /language-(\w+)/.exec(className || "");
-            const code = String(children).replace(/\n$/, "");
-            return !inline && match ? (
-              <CodeBlock language={match[1]} code={code} />
-            ) : (
-              <code className="text-[#e06c75] bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
-                {children}
-              </code>
-            );
-          },
-          pre({ children }) {
-            return <>{children}</>;
-          },
-        }}
+    <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50 text-sm overflow-hidden">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-4 py-2.5 text-gray-500 hover:text-gray-700 transition-colors"
       >
-        {content}
-      </ReactMarkdown>
+        <span className="flex items-center gap-2 font-medium">
+          {isStreaming && !allDone ? (
+            <span className="inline-flex gap-0.5">
+              <span className="w-1 h-1 rounded-full bg-gray-400 animate-bounce [animation-delay:0ms]" />
+              <span className="w-1 h-1 rounded-full bg-gray-400 animate-bounce [animation-delay:150ms]" />
+              <span className="w-1 h-1 rounded-full bg-gray-400 animate-bounce [animation-delay:300ms]" />
+            </span>
+          ) : (
+            <span>✓</span>
+          )}
+          思考过程
+        </span>
+        <span className="text-xs text-gray-400">{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div className="border-t border-gray-200 divide-y divide-gray-100">
+          {steps.map((step, i) => (
+            <div key={i} className="px-4 py-3 flex flex-col gap-1">
+              <div className="flex items-center gap-2 text-gray-600">
+                {step.done ? (
+                  <span className="text-green-500">✓</span>
+                ) : (
+                  <span className="inline-block w-3 h-3 rounded-full border-2 border-gray-400 border-t-transparent animate-spin" />
+                )}
+                <span>🔍 搜索：<span className="font-medium text-gray-800">{step.query}</span></span>
+              </div>
+              {step.snippet && (
+                <p className="ml-6 text-xs text-gray-400 line-clamp-2">{step.snippet}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AssistantMessage({ content, steps, isStreaming }: { content: string; steps?: Step[]; isStreaming?: boolean }) {
+  return (
+    <div>
+      <ThinkingPanel steps={steps ?? []} isStreaming={!!isStreaming} />
+      {!content && <span className="inline-block w-2 h-5 bg-gray-400 animate-pulse rounded" />}
+      {content && (
+        <div className="prose prose-sm max-w-none
+            prose-p:text-gray-900 prose-p:leading-7 prose-p:my-3 prose-p:text-[15px]
+            prose-headings:font-semibold prose-headings:text-gray-900 prose-headings:mt-5 prose-headings:mb-2
+            prose-strong:text-gray-900 prose-strong:font-semibold
+            prose-ul:my-3 prose-ol:my-3 prose-li:my-1 prose-li:text-gray-900 prose-li:text-[15px]
+            prose-code:text-[#e06c75] prose-code:bg-gray-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-code:font-mono prose-code:before:content-[''] prose-code:after:content-['']
+            prose-pre:p-0 prose-pre:bg-transparent prose-pre:my-0 prose-pre:border-none
+            prose-blockquote:border-l-4 prose-blockquote:border-gray-300 prose-blockquote:pl-4 prose-blockquote:text-gray-600 prose-blockquote:italic
+            prose-hr:border-gray-200
+            prose-table:text-sm prose-th:text-gray-900 prose-td:text-gray-700">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              code({ node, inline, className, children, ...props }: any) {
+                const match = /language-(\w+)/.exec(className || "");
+                const code = String(children).replace(/\n$/, "");
+                return !inline && match ? (
+                  <CodeBlock language={match[1]} code={code} />
+                ) : (
+                  <code className="text-[#e06c75] bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
+                    {children}
+                  </code>
+                );
+              },
+              pre({ children }) {
+                return <>{children}</>;
+              },
+            }}
+          >
+            {content}
+          </ReactMarkdown>
+        </div>
+      )}
     </div>
   );
 }
@@ -172,21 +247,51 @@ export default function ChatPage() {
     if (!response.body) { setIsStreaming(false); return; }
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-    let done = false;
+    let buffer = "";
+    let isDone = false;
 
-    while (!done) {
-      const { value, done: doneReading } = await reader.read();
-      done = doneReading;
-      if (value) {
-        const chunk = decoder.decode(value);
-        setMessages((prev) => {
-          const updated = [...prev];
-          updated[updated.length - 1] = {
-            role: "assistant",
-            content: updated[updated.length - 1].content + chunk,
-          };
-          return updated;
-        });
+    while (!isDone) {
+      const { value, done: readerDone } = await reader.read();
+      if (readerDone) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6).trim();
+        if (raw === "[DONE]") { isDone = true; break; }
+        const ev = parseSSEEvent(raw);
+        if (ev) {
+          if (ev.type === "text") {
+            setMessages((prev) => {
+              const updated = [...prev];
+              const last = { ...updated[updated.length - 1] };
+              last.content += ev.content;
+              updated[updated.length - 1] = last;
+              return updated;
+            });
+          } else if (ev.type === "tool_start") {
+            setMessages((prev) => {
+              const updated = [...prev];
+              const last = { ...updated[updated.length - 1] };
+              last.steps = [...(last.steps ?? []), { tool: ev.tool, query: ev.query, done: false }];
+              updated[updated.length - 1] = last;
+              return updated;
+            });
+          } else if (ev.type === "tool_end") {
+            setMessages((prev) => {
+              const updated = [...prev];
+              const last = { ...updated[updated.length - 1] };
+              const steps = [...(last.steps ?? [])];
+              if (steps.length > 0) steps[steps.length - 1] = { ...steps[steps.length - 1], snippet: ev.snippet, done: true };
+              last.steps = steps;
+              updated[updated.length - 1] = last;
+              return updated;
+            });
+          }
+        }
       }
     }
 
@@ -221,7 +326,11 @@ export default function ChatPage() {
                     </div>
                   </div>
                 ) : (
-                  <AssistantMessage content={msg.content} />
+                  <AssistantMessage
+                    content={msg.content}
+                    steps={msg.steps}
+                    isStreaming={isStreaming && index === messages.length - 1}
+                  />
                 )}
               </div>
             ))}
