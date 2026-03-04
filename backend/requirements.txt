@@ -22,7 +22,10 @@ jiter==0.13.0
 markdown-it-py==4.0.0
 MarkupSafe==3.0.3
 mdurl==0.1.2
-openai==2.16.0
+openai==2.24.0
+langchain==1.2.10
+langchain-core==1.2.17
+langchain-openai==1.1.10
 pydantic==2.12.5
 pydantic-extra-types==2.11.0
 pydantic-settings==2.12.0

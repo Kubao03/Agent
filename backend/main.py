@@ -3,8 +3,9 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from openai import AsyncOpenAI
 from pydantic import BaseModel
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
 load_dotenv()
 
@@ -19,6 +20,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+llm = ChatOpenAI(
+    model="deepseek-chat",
+    api_key=os.getenv("DEEPSEEK_API_KEY"),
+    base_url="https://api.deepseek.com",
+)
+
 class Message(BaseModel):
     role: str
     content: str
@@ -26,10 +33,14 @@ class Message(BaseModel):
 class ChatRequest(BaseModel):
     messages: list[Message]
 
-client = AsyncOpenAI(
-    api_key=os.getenv("DEEPSEEK_API_KEY"),
-    base_url="https://api.deepseek.com"
-)
+def build_messages(request: ChatRequest):
+    lc_messages = [SystemMessage(content="你是一个有用的 AI 助手。")]
+    for m in request.messages:
+        if m.role == "user":
+            lc_messages.append(HumanMessage(content=m.content))
+        else:
+            lc_messages.append(AIMessage(content=m.content))
+    return lc_messages
 
 @app.get("/")
 def read_root():
@@ -38,18 +49,9 @@ def read_root():
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatRequest):
     async def event_generator():
-        full_messages = [
-            {"role": "system", "content": "你是一个有用的 AI 助手。"}
-        ] + [{"role": m.role, "content": m.content} for m in request.messages]
-
-        response = await client.chat.completions.create(
-            model="deepseek-chat",
-            messages=full_messages,
-            stream=True
-        )
-        async for chunk in response:
-            content = chunk.choices[0].delta.content
-            if content:
-                yield content
+        lc_messages = build_messages(request)
+        async for chunk in llm.astream(lc_messages):
+            if chunk.content:
+                yield chunk.content
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
