@@ -13,6 +13,7 @@ from langchain_tavily import TavilySearch
 from langchain_community.tools import WikipediaQueryRun
 from langchain_community.utilities import WikipediaAPIWrapper
 from langchain.agents import create_agent
+from langgraph.checkpoint.memory import InMemorySaver
 from datetime import datetime
 
 load_dotenv()
@@ -58,9 +59,10 @@ tools = [search_tool, wiki_tool, get_current_time]
 # ── Agent ────────────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = "你是一个有用的 AI 助手。查询实时新闻或近期事件用搜索工具；查询百科知识、人物、历史用 Wikipedia；询问当前时间用 get_current_time。"
 agent = create_agent(
-    model=llm, 
-    tools=tools, 
-    system_prompt=SYSTEM_PROMPT
+    model=llm,
+    tools=tools,
+    system_prompt=SYSTEM_PROMPT,
+    checkpointer=InMemorySaver(),
 )
 
 # ── SSE event models ──────────────────────────────────────────────────────────
@@ -83,21 +85,9 @@ def sse(event: SSEEvent) -> str:
     return f"data: {event.model_dump_json()}\n\n"
 
 # ── Request models ────────────────────────────────────────────────────────────
-class Message(BaseModel):
-    role: str
-    content: str
-
 class ChatRequest(BaseModel):
-    messages: list[Message]
-
-def build_messages(request: ChatRequest):
-    lc_messages = []
-    for m in request.messages:
-        if m.role == "user":
-            lc_messages.append(HumanMessage(content=m.content))
-        else:
-            lc_messages.append(AIMessage(content=m.content))
-    return lc_messages
+    thread_id: str
+    message: str
 
 @app.get("/")
 def read_root():
@@ -106,9 +96,10 @@ def read_root():
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatRequest):
     async def event_generator():
-        lc_messages = build_messages(request)
+        config = {"configurable": {"thread_id": request.thread_id}}
         async for stream_mode, data in agent.astream(
-            {"messages": lc_messages},
+            {"messages": [HumanMessage(content=request.message)]},
+            config=config,
             stream_mode=["messages", "updates"],
         ):
             if stream_mode == "messages":

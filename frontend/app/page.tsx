@@ -222,6 +222,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const threadIdRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -231,8 +232,7 @@ export default function ChatPage() {
     if (!input.trim() || isStreaming) return;
 
     const userMessage: Message = { role: "user", content: input.trim() };
-    const updatedMessages = [...messages, userMessage];
-    setMessages(updatedMessages);
+    setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsStreaming(true);
     setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
@@ -241,7 +241,7 @@ export default function ChatPage() {
     const response = await fetch(`${API_URL}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: updatedMessages }),
+      body: JSON.stringify({ thread_id: threadIdRef.current, message: userMessage.content }),
     });
 
     if (!response.body) { setIsStreaming(false); return; }
