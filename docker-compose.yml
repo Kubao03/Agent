@@ -38,6 +38,7 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules # 避免本地 node_modules 覆盖容器内的
+      - /app/.next        # 避免本地 .next 构建缓存覆盖容器内的
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
       - NODE_PATH=/app/node_modules  # Tailwind CSS V4 需要这个环境变量来正确解析路径

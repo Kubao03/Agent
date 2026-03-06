@@ -1,35 +1,45 @@
 import os
+import io
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Literal, Union
 from langchain_openai import ChatOpenAI
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, AIMessage, AIMessageChunk, ToolMessage
 from langchain_core.tools import tool
 from langchain_tavily import TavilySearch
 from langchain_community.tools import WikipediaQueryRun
 from langchain_community.utilities import WikipediaAPIWrapper
 from langchain.agents import create_agent
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_chroma import Chroma
+from langchain_community.embeddings import DashScopeEmbeddings
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from pypdf import PdfReader
 from datetime import datetime
 
 load_dotenv()
 
 # ── LLM ──────────────────────────────────────────────────────────────────────
-
-# llm = ChatGoogleGenerativeAI(
-#     model="gemini-3-flash-preview",
-#     google_api_key=os.getenv("GOOGLE_API_KEY"),
-# )
-
 llm = ChatOpenAI(
     model="deepseek-chat",
     api_key=os.getenv("DEEPSEEK_API_KEY"),
     base_url="https://api.deepseek.com",
+)
+
+# ── RAG ───────────────────────────────────────────────────────────────────────
+embeddings = DashScopeEmbeddings(
+    model="text-embedding-v2",
+    dashscope_api_key=os.getenv("DASHSCOPE_API_KEY"),
+)
+
+vectorstore = Chroma(
+    collection_name="documents",
+    embedding_function=embeddings,
+    persist_directory="./chroma_db",
 )
 
 # ── Tools ────────────────────────────────────────────────────────────────────
@@ -46,14 +56,26 @@ def get_current_time() -> str:
     """返回当前日期和时间。当用户询问现在几点、今天星期几或当前日期时使用。"""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S （%A）")
 
-tools = [search_tool, wiki_tool, get_current_time]
+@tool
+def search_documents(query: str) -> str:
+    """从用户上传的文档中搜索相关内容。当用户询问关于已上传文件的问题时优先使用。"""
+    results = vectorstore.similarity_search(query, k=3)
+    if not results:
+        return "没有找到相关文档内容，请先上传文件。"
+    return "\n\n".join([
+        f"[来源: {doc.metadata.get('source', '文档')}]\n{doc.page_content}"
+        for doc in results
+    ])
+
+tools = [search_tool, wiki_tool, get_current_time, search_documents]
 
 # ── Agent ────────────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = (
     "你是一个有用的 AI 助手。工具使用规则：\n"
-    "1. 用户问到'今天'、'现在'、'最新'等时间相关内容时，先调用 get_current_time 获取准确日期，再用搜索工具搜索。\n"
-    "2. 查询实时新闻、天气、近期事件用搜索工具。\n"
-    "3. 查询百科知识、人物、历史用 Wikipedia。"
+    "1. 用户询问关于上传文件/文档的内容时，用 search_documents 工具。\n"
+    "2. 用户问到'今天'、'现在'、'最新'等时间相关内容时，先调用 get_current_time，再用搜索工具。\n"
+    "3. 查询实时新闻、天气、近期事件用搜索工具。\n"
+    "4. 查询百科知识、人物、历史用 Wikipedia。"
 )
 
 @asynccontextmanager
@@ -107,6 +129,20 @@ class ChatRequest(BaseModel):
 def read_root():
     return {"status": "Backend is running!"}
 
+@app.post("/api/upload")
+async def upload_file(file: UploadFile = File(...)):
+    content = await file.read()
+    reader = PdfReader(io.BytesIO(content))
+    text = "\n".join(
+        page.extract_text() for page in reader.pages if page.extract_text()
+    )
+    if not text.strip():
+        return {"error": "无法从 PDF 中提取文字"}
+    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    chunks = splitter.create_documents([text], metadatas=[{"source": file.filename}])
+    vectorstore.add_documents(chunks)
+    return {"filename": file.filename, "chunks": len(chunks)}
+
 @app.post("/api/chat")
 async def chat_endpoint(chat_request: ChatRequest, request: Request):
     agent = request.app.state.agent
@@ -132,13 +168,11 @@ async def chat_endpoint(chat_request: ChatRequest, request: Request):
                     if not msgs:
                         continue
                     last = msgs[-1]
-                    # Agent 决定调用工具
                     if isinstance(last, AIMessage) and last.tool_calls:
                         for tc in last.tool_calls:
                             args = tc.get("args", {})
                             query = args.get("query", str(args)) if isinstance(args, dict) else str(args)
                             yield sse(ToolStartEvent(tool=tc["name"], query=query))
-                    # 工具执行完毕，带摘要
                     elif isinstance(last, ToolMessage):
                         snippet = str(last.content)[:200] if last.content else ""
                         yield sse(ToolEndEvent(snippet=snippet))
