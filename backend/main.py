@@ -36,6 +36,7 @@ llm = ChatOpenAI(
 search_tool = TavilySearch(
     max_results=3,
     tavily_api_key=os.getenv("TAVILY_API_KEY"),
+    include_raw_content=True,
 )
 
 wiki_tool = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper(top_k_results=2))
@@ -48,7 +49,12 @@ def get_current_time() -> str:
 tools = [search_tool, wiki_tool, get_current_time]
 
 # ── Agent ────────────────────────────────────────────────────────────────────
-SYSTEM_PROMPT = "你是一个有用的 AI 助手。询问当前时间用 get_current_time；查询实时新闻或近期事件用搜索工具；查询百科知识、人物、历史用 Wikipedia。"
+SYSTEM_PROMPT = (
+    "你是一个有用的 AI 助手。工具使用规则：\n"
+    "1. 用户问到'今天'、'现在'、'最新'等时间相关内容时，先调用 get_current_time 获取准确日期，再用搜索工具搜索。\n"
+    "2. 查询实时新闻、天气、近期事件用搜索工具。\n"
+    "3. 查询百科知识、人物、历史用 Wikipedia。"
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
