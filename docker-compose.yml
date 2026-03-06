@@ -1,4 +1,16 @@
 services:
+  # 数据库服务
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ai-network
+
   # 后端服务
   backend:
     build: ./backend
@@ -8,11 +20,15 @@ services:
     # 关键：将本地的 .env 映射进去，保护 API Key
     env_file:
       - ./backend/.env
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
     # 挂载卷：让你在宿主机修改代码，容器内立刻生效（热更新）
     volumes:
       - ./backend:/app
     networks:
       - ai-network
+    depends_on:
+      - db
 
   # 前端服务
   frontend:
@@ -33,3 +49,6 @@ services:
 networks:
   ai-network:
     driver: bridge
+
+volumes:
+  postgres_data:

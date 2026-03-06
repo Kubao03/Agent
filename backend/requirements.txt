@@ -4,6 +4,10 @@ uvicorn==0.40.0
 python-dotenv==1.2.1
 pydantic==2.12.5
 
+# Checkpointer
+langgraph-checkpoint-postgres
+psycopg[binary,pool]
+
 # LangChain
 langchain==1.2.10
 langchain-core==1.2.17

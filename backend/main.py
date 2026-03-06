@@ -1,45 +1,36 @@
 import os
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Literal, Union
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, AIMessage, AIMessageChunk, ToolMessage
 from langchain_core.tools import tool
 from langchain_tavily import TavilySearch
 from langchain_community.tools import WikipediaQueryRun
 from langchain_community.utilities import WikipediaAPIWrapper
 from langchain.agents import create_agent
-from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from datetime import datetime
 
 load_dotenv()
 
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000",
-                   "https://cry-ai-agent.vercel.app"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # ── LLM ──────────────────────────────────────────────────────────────────────
-llm = ChatGoogleGenerativeAI(
-    model="gemini-3-flash-preview",
-    google_api_key=os.getenv("GOOGLE_API_KEY"),
-)
 
-# llm = ChatOpenAI(
-#     model="deepseek-chat",
-#     api_key=os.getenv("DEEPSEEK_API_KEY"),
-#     base_url="https://api.deepseek.com",
+# llm = ChatGoogleGenerativeAI(
+#     model="gemini-3-flash-preview",
+#     google_api_key=os.getenv("GOOGLE_API_KEY"),
 # )
+
+llm = ChatOpenAI(
+    model="deepseek-chat",
+    api_key=os.getenv("DEEPSEEK_API_KEY"),
+    base_url="https://api.deepseek.com",
+)
 
 # ── Tools ────────────────────────────────────────────────────────────────────
 search_tool = TavilySearch(
@@ -57,12 +48,29 @@ def get_current_time() -> str:
 tools = [search_tool, wiki_tool, get_current_time]
 
 # ── Agent ────────────────────────────────────────────────────────────────────
-SYSTEM_PROMPT = "你是一个有用的 AI 助手。查询实时新闻或近期事件用搜索工具；查询百科知识、人物、历史用 Wikipedia；询问当前时间用 get_current_time。"
-agent = create_agent(
-    model=llm,
-    tools=tools,
-    system_prompt=SYSTEM_PROMPT,
-    checkpointer=InMemorySaver(),
+SYSTEM_PROMPT = "你是一个有用的 AI 助手。询问当前时间用 get_current_time；查询实时新闻或近期事件用搜索工具；查询百科知识、人物、历史用 Wikipedia。"
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with AsyncPostgresSaver.from_conn_string(os.getenv("DATABASE_URL")) as checkpointer:
+        await checkpointer.setup()
+        app.state.agent = create_agent(
+            model=llm,
+            tools=tools,
+            system_prompt=SYSTEM_PROMPT,
+            checkpointer=checkpointer,
+        )
+        yield
+
+app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000",
+                   "https://cry-ai-agent.vercel.app"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ── SSE event models ──────────────────────────────────────────────────────────
@@ -94,11 +102,13 @@ def read_root():
     return {"status": "Backend is running!"}
 
 @app.post("/api/chat")
-async def chat_endpoint(request: ChatRequest):
+async def chat_endpoint(chat_request: ChatRequest, request: Request):
+    agent = request.app.state.agent
+
     async def event_generator():
-        config = {"configurable": {"thread_id": request.thread_id}}
+        config = {"configurable": {"thread_id": chat_request.thread_id}}
         async for stream_mode, data in agent.astream(
-            {"messages": [HumanMessage(content=request.message)]},
+            {"messages": [HumanMessage(content=chat_request.message)]},
             config=config,
             stream_mode=["messages", "updates"],
         ):
