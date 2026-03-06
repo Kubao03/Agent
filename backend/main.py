@@ -2,7 +2,7 @@ import os
 import tempfile
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, UploadFile, File
+from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -10,6 +10,7 @@ from typing import Literal, Union
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, AIMessageChunk, ToolMessage
 from langchain_core.tools import tool
+from langchain_core.runnables import RunnableConfig
 from langchain_tavily import TavilySearch
 from langchain_community.tools import WikipediaQueryRun
 from langchain_community.utilities import WikipediaAPIWrapper
@@ -19,6 +20,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_postgres import PGVector
 from langchain_community.embeddings import DashScopeEmbeddings
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from psycopg_pool import AsyncConnectionPool
 from datetime import datetime
 
 load_dotenv()
@@ -53,11 +55,14 @@ def get_current_time() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S （%A）")
 
 @tool
-def search_documents(query: str) -> str:
+def search_documents(query: str, config: RunnableConfig) -> str:
     """从用户上传的文档中搜索相关内容。当用户询问关于已上传文件的问题时优先使用。"""
     if vectorstore is None:
         return "向量数据库尚未初始化，请稍后再试。"
-    results = vectorstore.similarity_search(query, k=3)
+    thread_id = config.get("configurable", {}).get("thread_id", "")
+    results = vectorstore.similarity_search(
+        query, k=3, filter={"thread_id": thread_id}
+    )
     if not results:
         return "没有找到相关文档内容，请先上传文件。"
     return "\n\n".join([
@@ -87,15 +92,31 @@ async def lifespan(app: FastAPI):
         connection=vector_url,
     )
 
-    async with AsyncPostgresSaver.from_conn_string(os.getenv("DATABASE_URL")) as checkpointer:
-        await checkpointer.setup()
-        app.state.agent = create_agent(
-            model=llm,
-            tools=tools,
-            system_prompt=SYSTEM_PROMPT,
-            checkpointer=checkpointer,
-        )
-        yield
+    pool = AsyncConnectionPool(db_url, kwargs={"autocommit": True}, open=False)
+    await pool.open()
+    app.state.db = pool
+
+    checkpointer = AsyncPostgresSaver(conn=pool)
+    await checkpointer.setup()
+
+    async with pool.connection() as conn:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS threads (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+
+    app.state.agent = create_agent(
+        model=llm,
+        tools=tools,
+        system_prompt=SYSTEM_PROMPT,
+        checkpointer=checkpointer,
+    )
+    yield
+
+    await pool.close()
 
 app = FastAPI(lifespan=lifespan)
 
@@ -136,8 +157,43 @@ class ChatRequest(BaseModel):
 def read_root():
     return {"status": "Backend is running!"}
 
+# ── Thread management ─────────────────────────────────────────────────────────
+@app.get("/api/threads")
+async def list_threads(request: Request):
+    async with request.app.state.db.connection() as conn:
+        rows = await conn.execute("SELECT id, title, created_at FROM threads ORDER BY created_at DESC")
+        records = await rows.fetchall()
+    return [{"id": r[0], "title": r[1], "created_at": r[2].isoformat()} for r in records]
+
+@app.delete("/api/threads/{thread_id}")
+async def delete_thread(thread_id: str, request: Request):
+    async with request.app.state.db.connection() as conn:
+        result = await conn.execute("DELETE FROM threads WHERE id = %s", (thread_id,))
+    if result.pgresult.command_tuples == 0:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return {"ok": True}
+
+@app.get("/api/threads/{thread_id}/messages")
+async def get_thread_messages(thread_id: str, request: Request):
+    agent = request.app.state.agent
+    state = await agent.aget_state({"configurable": {"thread_id": thread_id}})
+    messages = state.values.get("messages", []) if state.values else []
+    result = []
+    for msg in messages:
+        if isinstance(msg, HumanMessage):
+            result.append({"role": "user", "content": msg.content})
+        elif isinstance(msg, AIMessage):
+            text = ""
+            if isinstance(msg.content, str):
+                text = msg.content
+            elif isinstance(msg.content, list):
+                text = "".join(b.get("text", "") for b in msg.content if isinstance(b, dict) and b.get("type") == "text")
+            if text and not msg.tool_calls:
+                result.append({"role": "assistant", "content": text})
+    return result
+
 @app.post("/api/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(file: UploadFile = File(...), thread_id: str = Form(...)):
     content = await file.read()
     with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
         tmp.write(content)
@@ -149,12 +205,19 @@ async def upload_file(file: UploadFile = File(...)):
     chunks = splitter.split_documents(docs)
     for chunk in chunks:
         chunk.metadata["source"] = file.filename
+        chunk.metadata["thread_id"] = thread_id
     vectorstore.add_documents(chunks)
     return {"filename": file.filename, "chunks": len(chunks)}
 
 @app.post("/api/chat")
 async def chat_endpoint(chat_request: ChatRequest, request: Request):
     agent = request.app.state.agent
+    title = chat_request.message[:40]
+    async with request.app.state.db.connection() as conn:
+        await conn.execute(
+            "INSERT INTO threads (id, title) VALUES (%s, %s) ON CONFLICT (id) DO NOTHING",
+            (chat_request.thread_id, title),
+        )
 
     async def event_generator():
         config = {"configurable": {"thread_id": chat_request.thread_id}}
