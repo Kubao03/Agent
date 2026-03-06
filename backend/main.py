@@ -1,5 +1,5 @@
 import os
-import io
+import tempfile
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, UploadFile, File
@@ -15,10 +15,10 @@ from langchain_community.tools import WikipediaQueryRun
 from langchain_community.utilities import WikipediaAPIWrapper
 from langchain.agents import create_agent
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_chroma import Chroma
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_postgres import PGVector
 from langchain_community.embeddings import DashScopeEmbeddings
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from pypdf import PdfReader
 from datetime import datetime
 
 load_dotenv()
@@ -36,11 +36,7 @@ embeddings = DashScopeEmbeddings(
     dashscope_api_key=os.getenv("DASHSCOPE_API_KEY"),
 )
 
-vectorstore = Chroma(
-    collection_name="documents",
-    embedding_function=embeddings,
-    persist_directory="./chroma_db",
-)
+vectorstore: PGVector | None = None  # initialized in lifespan after DB is ready
 
 # ── Tools ────────────────────────────────────────────────────────────────────
 search_tool = TavilySearch(
@@ -59,6 +55,8 @@ def get_current_time() -> str:
 @tool
 def search_documents(query: str) -> str:
     """从用户上传的文档中搜索相关内容。当用户询问关于已上传文件的问题时优先使用。"""
+    if vectorstore is None:
+        return "向量数据库尚未初始化，请稍后再试。"
     results = vectorstore.similarity_search(query, k=3)
     if not results:
         return "没有找到相关文档内容，请先上传文件。"
@@ -80,6 +78,15 @@ SYSTEM_PROMPT = (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global vectorstore
+    db_url = os.getenv("DATABASE_URL", "")
+    vector_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    vectorstore = PGVector(
+        embeddings=embeddings,
+        collection_name="documents",
+        connection=vector_url,
+    )
+
     async with AsyncPostgresSaver.from_conn_string(os.getenv("DATABASE_URL")) as checkpointer:
         await checkpointer.setup()
         app.state.agent = create_agent(
@@ -132,14 +139,16 @@ def read_root():
 @app.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)):
     content = await file.read()
-    reader = PdfReader(io.BytesIO(content))
-    text = "\n".join(
-        page.extract_text() for page in reader.pages if page.extract_text()
+    with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
+        tmp.write(content)
+        tmp.flush()
+        docs = PyPDFLoader(tmp.name).load()
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000, chunk_overlap=200, add_start_index=True
     )
-    if not text.strip():
-        return {"error": "无法从 PDF 中提取文字"}
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-    chunks = splitter.create_documents([text], metadatas=[{"source": file.filename}])
+    chunks = splitter.split_documents(docs)
+    for chunk in chunks:
+        chunk.metadata["source"] = file.filename
     vectorstore.add_documents(chunks)
     return {"filename": file.filename, "chunks": len(chunks)}
 

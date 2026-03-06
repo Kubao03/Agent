@@ -1,7 +1,7 @@
 services:
   # 数据库服务
   db:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_PASSWORD: postgres
     ports:

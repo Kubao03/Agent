@@ -21,7 +21,7 @@ tavily-python==0.7.22
 wikipedia==1.4.0
 
 # RAG
-langchain-chroma
+langchain-postgres
 langchain-text-splitters
 dashscope
 pypdf
