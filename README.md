@@ -14,7 +14,7 @@ A full-stack AI chat application with multi-model support, tool calling, streami
 | Agent | LangChain + LangGraph (ReAct) |
 | Memory | PostgreSQL + LangGraph checkpointer |
 | RAG | pgvector + DashScope embeddings |
-| Deployment | Vercel (frontend) + Railway (backend) |
+| Deployment | Vercel (frontend) + Zeabur (backend) |
 
 ## Features
 
@@ -101,6 +101,6 @@ Full API reference in [`backend/README.md`](backend/README.md).
 
 | Service | Platform | Notes |
 |---|---|---|
-| Frontend | Vercel | Set `NEXT_PUBLIC_API_URL` to backend URL |
-| Backend | Railway | Set all API keys as environment variables |
-| Database | Railway PostgreSQL | Enable pgvector extension |
+| Frontend | Vercel | Set `NEXT_PUBLIC_API_URL` to Zeabur backend URL |
+| Backend | Zeabur | Deploy `backend/` via Dockerfile, set all API keys as env vars |
+| Database | Zeabur (pgvector/pgvector:pg18) | Custom Docker image, expose port 5432, set `DATABASE_URL` manually |
