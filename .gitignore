@@ -1,5 +1,6 @@
 # backend
-backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
 backend/.env
 
 # frontend
