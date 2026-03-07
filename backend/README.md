@@ -6,14 +6,37 @@ FastAPI + LangGraph agent server with streaming SSE, multi-model support, conver
 
 ```
 backend/
-├── main.py              # FastAPI app, agent setup, all API endpoints
-├── requirements.txt     # Python dependencies
-└── .env                 # API keys (not committed)
+├── app/
+│   ├── main.py              # FastAPI app entry, lifespan, middleware, router registration
+│   ├── config.py            # Env vars, MODEL_CONFIGS, CORS origins
+│   ├── core/
+│   │   ├── agent.py         # Agent factory: make_system_prompt, create_agents
+│   │   ├── rag.py           # Vectorstore singleton: init_vectorstore, get_vectorstore
+│   │   └── tools.py         # LangChain tool definitions (search, wiki, time, RAG)
+│   ├── models/
+│   │   ├── events.py        # SSE event Pydantic models + sse() serializer
+│   │   └── requests.py      # ChatRequest schema
+│   ├── services/
+│   │   ├── chat_service.py  # stream_agent_response async generator
+│   │   └── upload_service.py# process_pdf sync function (called via asyncio.to_thread)
+│   └── api/routes/
+│       ├── chat.py          # POST /api/chat
+│       ├── models.py        # GET /api/models
+│       ├── threads.py       # GET/DELETE /api/threads, GET /api/threads/{id}/messages
+│       └── upload.py        # POST /api/upload
+├── requirements.txt
+├── .env                     # API keys (not committed)
+├── .env.example             # Template for required env vars
+└── Dockerfile
 ```
 
 ## Environment Variables
 
-Create `.env` in this directory:
+Copy `.env.example` and fill in your keys:
+
+```bash
+cp .env.example .env
+```
 
 ```env
 DEEPSEEK_API_KEY=
@@ -28,13 +51,20 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres
 
 ```bash
 pip install -r requirements.txt
-uvicorn main:app --reload
+uvicorn app.main:app --reload
 # http://localhost:8000
 ```
 
 Requires a PostgreSQL instance with the `pgvector` extension enabled.
 
 ## API Reference
+
+### `GET /api/models`
+Returns available LLM models.
+
+```json
+[{ "id": "deepseek-chat", "label": "DeepSeek" }]
+```
 
 ### `GET /api/threads`
 Returns all conversation threads ordered by creation time.

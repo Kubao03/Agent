@@ -38,7 +38,13 @@ my-ai-app/
 │   ├── types/               # TypeScript types
 │   └── constants/           # Model list config
 ├── backend/
-│   └── main.py              # FastAPI app, LangGraph agent, all endpoints
+│   └── app/
+│       ├── main.py          # FastAPI app entry, lifespan, middleware
+│       ├── config.py        # Env vars, model configs, CORS
+│       ├── core/            # Agent factory, RAG, tool definitions
+│       ├── models/          # Pydantic request & SSE event schemas
+│       ├── services/        # Chat streaming, PDF processing
+│       └── api/routes/      # Route handlers (chat, threads, upload, models)
 ├── docker-compose.yml       # Local full-stack dev (Postgres + backend + frontend)
 └── README.md
 ```
@@ -71,7 +77,7 @@ docker compose up --build
 ```bash
 # Backend
 cd backend && pip install -r requirements.txt
-uvicorn main:app --reload
+uvicorn app.main:app --reload
 
 # Frontend (new terminal)
 cd frontend && npm install
