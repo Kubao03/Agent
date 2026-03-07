@@ -191,51 +191,76 @@ function InputBox({ input, isStreaming, setInput, handleSend, uploadedFile, onUp
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
 function Sidebar({
-  threads, activeId, onSelect, onNew, onDelete,
+  threads, activeId, onSelect, onNew, onDelete, collapsed, onToggle,
 }: {
   threads: Thread[];
   activeId: string;
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
+  collapsed: boolean;
+  onToggle: () => void;
 }) {
   return (
-    <aside className="w-60 shrink-0 flex flex-col border-r border-gray-200 bg-gray-50 h-screen">
-      <div className="p-3 border-b border-gray-200">
-        <button onClick={onNew}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">
+    <aside className={`shrink-0 flex flex-col bg-gray-50 h-screen transition-all duration-200 ${collapsed ? "w-12" : "w-60"}`}>
+      <div className="p-2 flex items-center gap-2">
+        <button onClick={onToggle}
+          className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-200 transition-colors shrink-0"
+          title={collapsed ? "展开" : "收起"}>
           <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth="2">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
           </svg>
-          新建对话
         </button>
+        {!collapsed && (
+          <button onClick={onNew}
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">
+            <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth="2">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            新建对话
+          </button>
+        )}
       </div>
 
-      <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
-        {threads.length === 0 && (
-          <p className="text-xs text-gray-400 text-center mt-6">暂无对话记录</p>
-        )}
-        {threads.map((t) => (
-          <div key={t.id}
-            className={`group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
-              t.id === activeId ? "bg-white shadow-sm text-gray-900" : "text-gray-600 hover:bg-white hover:text-gray-900"
-            }`}
-            onClick={() => onSelect(t.id)}>
-            <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 shrink-0 text-gray-400" stroke="currentColor" strokeWidth="2">
-              <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+      {collapsed ? (
+        <div className="flex flex-col items-center pt-1">
+          <button onClick={onNew}
+            className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+            title="新建对话">
+            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth="2">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
-            <span className="flex-1 text-xs truncate">{t.title}</span>
-            <button
-              onClick={(e) => { e.stopPropagation(); onDelete(t.id); }}
-              className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all p-0.5 rounded"
-              title="删除">
-              <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth="2">
-                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+          </button>
+        </div>
+      ) : (
+        <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
+          {threads.length === 0 && (
+            <p className="text-xs text-gray-400 text-center mt-6">暂无对话记录</p>
+          )}
+          {threads.map((t) => (
+            <div key={t.id}
+              className={`group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
+                t.id === activeId ? "bg-white shadow-sm text-gray-900" : "text-gray-600 hover:bg-white hover:text-gray-900"
+              }`}
+              onClick={() => onSelect(t.id)}>
+              <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 shrink-0 text-gray-400" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
               </svg>
-            </button>
-          </div>
-        ))}
-      </nav>
+              <span className="flex-1 text-xs truncate">{t.title}</span>
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete(t.id); }}
+                className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all p-0.5 rounded"
+                title="删除">
+                <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth="2">
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                </svg>
+              </button>
+            </div>
+          ))}
+        </nav>
+      )}
     </aside>
   );
 }
@@ -249,6 +274,7 @@ export default function ChatPage() {
   const [uploadedFile, setUploadedFile] = useState<string>();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [activeThreadId, setActiveThreadId] = useState(() => crypto.randomUUID());
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const fetchThreads = useCallback(async () => {
@@ -371,11 +397,13 @@ export default function ChatPage() {
         onSelect={handleSelect}
         onNew={handleNew}
         onDelete={handleDelete}
+        collapsed={sidebarCollapsed}
+        onToggle={() => setSidebarCollapsed((v) => !v)}
       />
 
       <div className="flex flex-col flex-1 min-w-0">
-        <header className="py-3 px-4 border-b border-gray-200 flex justify-center sticky top-0 bg-white z-10">
-          <span className="text-sm font-medium text-gray-700">DeepSeek Agent</span>
+        <header className="py-3 px-4 flex justify-center sticky top-0 bg-white z-10">
+          <span className="text-sm font-medium text-gray-700">Agent</span>
         </header>
 
         <main className={`flex-1 overflow-y-auto overflow-x-hidden ${!hasConversation ? "flex items-center justify-center" : ""}`}>
@@ -411,7 +439,7 @@ export default function ChatPage() {
         </main>
 
         {hasConversation && (
-          <footer className="px-4 py-4 md:pb-6 border-t border-gray-100 bg-white">
+          <footer className="px-4 py-4 md:pb-6 bg-white">
             <div className="max-w-3xl mx-auto">
               <InputBox {...inputBoxProps} />
               <p className="text-xs text-gray-400 text-center mt-3">AI 可能会出错，请核实重要信息。</p>
