@@ -121,7 +121,7 @@ function AssistantMessage({ content, steps, isStreaming }: { content: string; st
   return (
     <div>
       <ThinkingPanel steps={steps ?? []} isStreaming={!!isStreaming} />
-      {!content && <span className="inline-block w-2 h-5 bg-gray-400 animate-pulse rounded" />}
+      {!content && isStreaming && <span className="inline-block w-2 h-5 bg-gray-400 animate-pulse rounded" />}
       {content && (
         <div className="prose prose-sm max-w-none
             prose-p:text-gray-900 prose-p:leading-7 prose-p:my-3 prose-p:text-[15px]
@@ -153,11 +153,11 @@ function AssistantMessage({ content, steps, isStreaming }: { content: string; st
 
 type InputBoxProps = {
   input: string; isStreaming: boolean;
-  setInput: (v: string) => void; handleSend: () => void;
+  setInput: (v: string) => void; handleSend: () => void; onAbort: () => void;
   uploadedFile?: string; onUpload: (file: File) => void;
 };
 
-function InputBox({ input, isStreaming, setInput, handleSend, uploadedFile, onUpload }: InputBoxProps) {
+function InputBox({ input, isStreaming, setInput, handleSend, onAbort, uploadedFile, onUpload }: InputBoxProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   return (
     <div className="flex flex-col gap-2">
@@ -186,10 +186,17 @@ function InputBox({ input, isStreaming, setInput, handleSend, uploadedFile, onUp
           onChange={(e) => setInput(e.target.value)}
           placeholder="给 Agent 发送消息..."
         />
-        <button onClick={handleSend} disabled={!input.trim() || isStreaming}
-          className="absolute right-2.5 bottom-2.5 w-8 h-8 flex items-center justify-center bg-gray-900 text-white rounded-lg hover:bg-gray-700 active:scale-95 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-all">
-          <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-        </button>
+        {isStreaming ? (
+          <button onClick={onAbort}
+            className="absolute right-2.5 bottom-2.5 w-8 h-8 flex items-center justify-center bg-gray-900 text-white rounded-lg hover:bg-gray-700 active:scale-95 transition-all">
+            <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5"><rect x="5" y="5" width="14" height="14" rx="1"/></svg>
+          </button>
+        ) : (
+          <button onClick={handleSend} disabled={!input.trim()}
+            className="absolute right-2.5 bottom-2.5 w-8 h-8 flex items-center justify-center bg-gray-900 text-white rounded-lg hover:bg-gray-700 active:scale-95 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-all">
+            <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -327,6 +334,7 @@ export default function ChatPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedModel, setSelectedModel] = useState(MODELS[0].id);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchThreads = useCallback(async () => {
     const res = await fetch(`${API_URL}/api/threads`);
@@ -368,6 +376,10 @@ export default function ChatPage() {
     if (!data.error) setUploadedFile(data.filename);
   };
 
+  const handleAbort = () => {
+    abortControllerRef.current?.abort();
+  };
+
   const handleSend = async () => {
     if (!input.trim() || isStreaming) return;
 
@@ -377,67 +389,76 @@ export default function ChatPage() {
     setIsStreaming(true);
     setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
-    const response = await fetch(`${API_URL}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ thread_id: activeThreadId, message: userMessage.content, model: selectedModel }),
-    });
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
-    if (!response.body) { setIsStreaming(false); return; }
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let isDone = false;
+    try {
+      const response = await fetch(`${API_URL}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ thread_id: activeThreadId, message: userMessage.content, model: selectedModel, uploaded_file: uploadedFile }),
+        signal: controller.signal,
+      });
 
-    while (!isDone) {
-      const { value, done: readerDone } = await reader.read();
-      if (readerDone) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
+      if (!response.body) return;
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let isDone = false;
 
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue;
-        const raw = line.slice(6).trim();
-        if (raw === "[DONE]") { isDone = true; break; }
-        const ev = parseSSEEvent(raw);
-        if (ev) {
-          if (ev.type === "text") {
-            setMessages((prev) => {
-              const updated = [...prev];
-              const last = { ...updated[updated.length - 1] };
-              last.content += ev.content;
-              updated[updated.length - 1] = last;
-              return updated;
-            });
-          } else if (ev.type === "tool_start") {
-            setMessages((prev) => {
-              const updated = [...prev];
-              const last = { ...updated[updated.length - 1] };
-              last.steps = [...(last.steps ?? []), { tool: ev.tool, query: ev.query, done: false }];
-              updated[updated.length - 1] = last;
-              return updated;
-            });
-          } else if (ev.type === "tool_end") {
-            setMessages((prev) => {
-              const updated = [...prev];
-              const last = { ...updated[updated.length - 1] };
-              const steps = [...(last.steps ?? [])];
-              if (steps.length > 0) steps[steps.length - 1] = { ...steps[steps.length - 1], snippet: ev.snippet, done: true };
-              last.steps = steps;
-              updated[updated.length - 1] = last;
-              return updated;
-            });
+      while (!isDone) {
+        const { value, done: readerDone } = await reader.read();
+        if (readerDone) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const raw = line.slice(6).trim();
+          if (raw === "[DONE]") { isDone = true; break; }
+          const ev = parseSSEEvent(raw);
+          if (ev) {
+            if (ev.type === "text") {
+              setMessages((prev) => {
+                const updated = [...prev];
+                const last = { ...updated[updated.length - 1] };
+                last.content += ev.content;
+                updated[updated.length - 1] = last;
+                return updated;
+              });
+            } else if (ev.type === "tool_start") {
+              setMessages((prev) => {
+                const updated = [...prev];
+                const last = { ...updated[updated.length - 1] };
+                last.steps = [...(last.steps ?? []), { tool: ev.tool, query: ev.query, done: false }];
+                updated[updated.length - 1] = last;
+                return updated;
+              });
+            } else if (ev.type === "tool_end") {
+              setMessages((prev) => {
+                const updated = [...prev];
+                const last = { ...updated[updated.length - 1] };
+                const steps = [...(last.steps ?? [])];
+                if (steps.length > 0) steps[steps.length - 1] = { ...steps[steps.length - 1], snippet: ev.snippet, done: true };
+                last.steps = steps;
+                updated[updated.length - 1] = last;
+                return updated;
+              });
+            }
           }
         }
       }
+      fetchThreads();
+    } catch (e: any) {
+      if (e?.name !== "AbortError") console.error(e);
+    } finally {
+      setIsStreaming(false);
+      abortControllerRef.current = null;
     }
-
-    setIsStreaming(false);
-    fetchThreads();
   };
 
-  const inputBoxProps = { input, isStreaming, setInput, handleSend, uploadedFile, onUpload: handleUpload };
+  const inputBoxProps = { input, isStreaming, setInput, handleSend, onAbort: handleAbort, uploadedFile, onUpload: handleUpload };
   const hasConversation = messages.length > 0;
 
   return (

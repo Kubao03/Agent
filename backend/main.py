@@ -111,7 +111,7 @@ tools = [search_tool, wiki_tool, get_current_time, search_documents]
 def make_system_prompt(label: str) -> str:
     return (
         f"你是 {label}，一个有用的 AI 助手。工具使用规则：\n"
-        "1. 用户询问关于上传文件/文档的内容时，用 search_documents 工具。\n"
+        "1. 如果需要查询关于上传文件/文档的内容时，用 search_documents 工具。\n"
         "2. 用户问到'今天'、'现在'、'最新'等时间相关内容时，先调用 get_current_time，再用搜索工具。\n"
         "3. 查询实时新闻、天气、近期事件用搜索工具。\n"
         "4. 查询百科知识、人物、历史用 Wikipedia。"
@@ -192,6 +192,7 @@ class ChatRequest(BaseModel):
     thread_id: str
     message: str
     model: str = DEFAULT_MODEL
+    uploaded_file: str | None = None
 
 @app.get("/")
 def read_root():
@@ -276,11 +277,17 @@ async def chat_endpoint(chat_request: ChatRequest, request: Request):
 
     async def event_generator():
         config = {"configurable": {"thread_id": chat_request.thread_id}}
+        user_content = chat_request.message
+        if chat_request.uploaded_file:
+            user_content = f"[用户已上传文件：{chat_request.uploaded_file}]\n{user_content}"
         async for stream_mode, data in agent.astream(
-            {"messages": [HumanMessage(content=chat_request.message)]},
+            {"messages": [HumanMessage(content=user_content)]},
             config=config,
             stream_mode=["messages", "updates"],
         ):
+            if await request.is_disconnected():
+                logger.info(f"[CHAT] client disconnected, stopping stream thread={chat_request.thread_id[:8]}")
+                break
             if stream_mode == "messages":
                 token, _ = data
                 if isinstance(token, AIMessageChunk) and not token.tool_call_chunks:
