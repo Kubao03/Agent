@@ -1,6 +1,7 @@
 import os
 import logging
 import tempfile
+import asyncio
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
@@ -238,19 +239,28 @@ async def get_thread_messages(thread_id: str, request: Request):
 @app.post("/api/upload")
 async def upload_file(file: UploadFile = File(...), thread_id: str = Form(...)):
     content = await file.read()
-    with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
-        tmp.write(content)
-        tmp.flush()
-        docs = PyPDFLoader(tmp.name).load()
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000, chunk_overlap=200, add_start_index=True
-    )
-    chunks = splitter.split_documents(docs)
-    for chunk in chunks:
-        chunk.metadata["source"] = file.filename
-        chunk.metadata["thread_id"] = thread_id
-    vectorstore.add_documents(chunks)
-    return {"filename": file.filename, "chunks": len(chunks)}
+    filename = file.filename
+
+    def process():
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        try:
+            docs = PyPDFLoader(tmp_path).load()
+        finally:
+            os.unlink(tmp_path)
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=2000, chunk_overlap=200, add_start_index=True
+        )
+        chunks = splitter.split_documents(docs)
+        for chunk in chunks:
+            chunk.metadata["source"] = filename
+            chunk.metadata["thread_id"] = thread_id
+        vectorstore.add_documents(chunks)
+        return len(chunks)
+
+    num_chunks = await asyncio.to_thread(process)
+    return {"filename": filename, "chunks": num_chunks}
 
 @app.post("/api/chat")
 async def chat_endpoint(chat_request: ChatRequest, request: Request):
