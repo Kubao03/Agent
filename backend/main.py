@@ -222,19 +222,64 @@ async def delete_thread(thread_id: str, request: Request):
 async def get_thread_messages(thread_id: str, request: Request):
     agent = request.app.state.agents[DEFAULT_MODEL]
     state = await agent.aget_state({"configurable": {"thread_id": thread_id}})
-    messages = state.values.get("messages", []) if state.values else []
+    raw_messages = state.values.get("messages", []) if state.values else []
+
+    # tool_call_id -> ToolMessage，用于重建 steps
+    tool_results: dict = {}
+    for msg in raw_messages:
+        if isinstance(msg, ToolMessage):
+            tool_results[msg.tool_call_id] = msg
+
     result = []
-    for msg in messages:
+    pending_steps: list = []   # 当前轮次积累的工具调用步骤
+
+    for msg in raw_messages:
         if isinstance(msg, HumanMessage):
-            result.append({"role": "user", "content": msg.content})
+            content = msg.content if isinstance(msg.content, str) else ""
+            uploaded_file = None
+            # 剥离发送时拼入的文件前缀 "[用户已上传文件：xxx]\n"
+            if content.startswith("[用户已上传文件："):
+                try:
+                    end_idx = content.index("]\n")
+                    uploaded_file = content[9:end_idx]
+                    content = content[end_idx + 2:]
+                except ValueError:
+                    pass
+            entry: dict = {"role": "user", "content": content}
+            if uploaded_file:
+                entry["uploadedFile"] = uploaded_file
+            result.append(entry)
+            pending_steps = []
+
         elif isinstance(msg, AIMessage):
             text = ""
             if isinstance(msg.content, str):
                 text = msg.content
             elif isinstance(msg.content, list):
-                text = "".join(b.get("text", "") for b in msg.content if isinstance(b, dict) and b.get("type") == "text")
-            if text and not msg.tool_calls:
-                result.append({"role": "assistant", "content": text})
+                text = "".join(
+                    b.get("text", "") for b in msg.content
+                    if isinstance(b, dict) and b.get("type") == "text"
+                )
+
+            if msg.tool_calls:
+                # 积累工具调用步骤，等最终回复一起返回
+                for tc in msg.tool_calls:
+                    args = tc.get("args", {})
+                    query = args.get("query", str(args)) if isinstance(args, dict) else str(args)
+                    tool_msg = tool_results.get(tc["id"])
+                    snippet = str(tool_msg.content)[:200] if tool_msg and tool_msg.content else ""
+                    pending_steps.append({
+                        "tool": tc["name"], "query": query,
+                        "snippet": snippet, "done": True,
+                    })
+            elif text:
+                # 最终回复：把前面积累的 steps 一并带上
+                entry = {"role": "assistant", "content": text}
+                if pending_steps:
+                    entry["steps"] = pending_steps
+                result.append(entry)
+                pending_steps = []
+
     return result
 
 @app.post("/api/upload")
