@@ -1,6 +1,6 @@
-# AI Agent Chat
+# AI Agent
 
-A fullstack AI Agent application with tool calling, streaming responses, and thinking process visualization.
+A full-stack AI chat application with multi-model support, tool calling, streaming responses, and conversation history.
 
 **Live demo:** https://cry-ai-agent.vercel.app
 
@@ -8,112 +8,93 @@ A fullstack AI Agent application with tool calling, streaming responses, and thi
 
 | Layer | Technology |
 |---|---|
-| Frontend | Next.js 15, TypeScript, Tailwind CSS v4 |
-| Backend | FastAPI, Python |
-| AI | Gemini / DeepSeek (switchable) |
-| Agent | LangChain + LangGraph (ReAct agent) |
-| Rendering | react-markdown, react-syntax-highlighter |
+| Frontend | Next.js 16, TypeScript, Tailwind CSS v4 |
+| Backend | FastAPI, Python 3.11 |
+| AI Models | DeepSeek / Gemini / Qwen / Claude (switchable) |
+| Agent | LangChain + LangGraph (ReAct) |
+| Memory | PostgreSQL + LangGraph checkpointer |
+| RAG | pgvector + DashScope embeddings |
 | Deployment | Vercel (frontend) + Railway (backend) |
 
 ## Features
 
-- **Tool calling** — agent autonomously decides when to use tools
-- **Thinking process UI** — collapsible panel showing tool calls in real time
-- **Multi-turn conversation** — full message history sent each turn
+- **Multi-model switching** — DeepSeek, Gemini, Qwen, Claude selectable per conversation
 - **Streaming responses** — token-by-token output via SSE
-- **Markdown and code rendering** — syntax highlighting with copy button
-- **Structured SSE events** — typed JSON events (text / tool_start / tool_end)
-
-## Tools
-
-| Tool | Source | Use case |
-|---|---|---|
-| Tavily Search | `langchain_tavily` | Real-time news and web search |
-| Wikipedia | `langchain_community` | Encyclopedic knowledge |
-| get_current_time | custom `@tool` | Current date and time |
+- **Tool calling** — agent autonomously uses search, Wikipedia, time, and document tools
+- **Thinking process UI** — collapsible panel showing tool calls in real time
+- **PDF upload & RAG** — upload documents and ask questions about them
+- **Conversation history** — threads persisted in PostgreSQL, restorable on reload
+- **Markdown & code rendering** — syntax highlighting with copy button
 
 ## Project Structure
 
 ```
 my-ai-app/
 ├── frontend/
-│   └── app/
-│       ├── page.tsx        # Chat UI, SSE parsing, ThinkingPanel
-│       └── globals.css
+│   ├── app/                 # Next.js routes & global styles
+│   ├── components/          # UI components (chat, sidebar, ui)
+│   ├── hooks/               # useChat — state & business logic
+│   ├── lib/                 # API calls, SSE parser
+│   ├── types/               # TypeScript types
+│   └── constants/           # Model list config
 ├── backend/
-│   └── main.py             # FastAPI, LangChain agent, SSE streaming
-├── docker-compose.yml
+│   └── main.py              # FastAPI app, LangGraph agent, all endpoints
+├── docker-compose.yml       # Local full-stack dev (Postgres + backend + frontend)
 └── README.md
 ```
 
-## Getting Started
+See [`frontend/README.md`](frontend/README.md) and [`backend/README.md`](backend/README.md) for detailed setup.
+
+## Quick Start
 
 ### Prerequisites
 
 - Node.js 18+
 - Python 3.11+
-- API keys: [DeepSeek](https://platform.deepseek.com) or [Gemini](https://aistudio.google.com), [Tavily](https://app.tavily.com)
+- PostgreSQL with pgvector extension
+- API keys: DeepSeek, Google, Qwen (DashScope), Anthropic, Tavily
 
-### Local Development
-
-**1. Backend**
-
-```bash
-cd backend
-pip install -r requirements.txt
-
-# .env
-DEEPSEEK_API_KEY=your_key
-GOOGLE_API_KEY=your_key
-TAVILY_API_KEY=your_key
-
-uvicorn main:app --reload
-# http://localhost:8000
-```
-
-**2. Frontend**
+### With Docker (recommended)
 
 ```bash
-cd frontend
-npm install
+# Copy and fill in your API keys
+cp backend/.env.example backend/.env
 
-# .env.local
-NEXT_PUBLIC_API_URL=http://localhost:8000
-
-npm run dev
-# http://localhost:3000
-```
-
-### Docker
-
-```bash
 docker compose up --build
 ```
 
-## API
+- Frontend: http://localhost:3000
+- Backend: http://localhost:8000
 
-`POST /api/chat` — returns `text/event-stream`
+### Manual Setup
 
-**Request**
-```json
-{
-  "messages": [
-    { "role": "user", "content": "今天上海天气怎么样？" }
-  ]
-}
+```bash
+# Backend
+cd backend && pip install -r requirements.txt
+uvicorn main:app --reload
+
+# Frontend (new terminal)
+cd frontend && npm install
+npm run dev
 ```
 
-**SSE Events**
+## API Overview
+
+`POST /api/chat` — streaming chat, returns `text/event-stream`
+
 ```
-data: {"type":"tool_start","tool":"tavily_search","query":"上海天气"}
-data: {"type":"tool_end","snippet":"上海今日多云，气温 18°C..."}
-data: {"type":"text","content":"根据"}
-data: {"type":"text","content":"搜索结果"}
-...
+data: {"type":"tool_start","tool":"tavily_search_results_json","query":"..."}
+data: {"type":"tool_end","snippet":"..."}
+data: {"type":"text","content":"..."}
 data: [DONE]
 ```
 
+Full API reference in [`backend/README.md`](backend/README.md).
+
 ## Deployment
 
-- **Frontend** — Vercel, set `NEXT_PUBLIC_API_URL` to backend URL
-- **Backend** — Railway, set all API keys as environment variables
+| Service | Platform | Notes |
+|---|---|---|
+| Frontend | Vercel | Set `NEXT_PUBLIC_API_URL` to backend URL |
+| Backend | Railway | Set all API keys as environment variables |
+| Database | Railway PostgreSQL | Enable pgvector extension |

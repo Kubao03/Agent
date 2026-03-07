@@ -1,36 +1,76 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Frontend
 
-## Getting Started
+Next.js 16 + TypeScript + Tailwind CSS v4 chat interface for AI Agent.
 
-First, run the development server:
+## Project Structure
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```
+frontend/
+├── app/
+│   ├── globals.css          # Global styles & scrollbar
+│   ├── layout.tsx           # Root layout, fonts, metadata
+│   └── page.tsx             # Main page (composition layer only)
+├── components/
+│   ├── chat/
+│   │   ├── AssistantMessage.tsx   # AI response with Markdown rendering
+│   │   ├── InputBox.tsx           # Textarea, PDF upload, send/stop button
+│   │   └── ThinkingPanel.tsx      # Collapsible tool-call steps panel
+│   ├── sidebar/
+│   │   └── Sidebar.tsx            # Conversation history sidebar
+│   └── ui/
+│       ├── CodeBlock.tsx          # Syntax-highlighted code with copy button
+│       ├── Icons.tsx              # Shared SVG icons
+│       └── ModelDropdown.tsx      # Model selector dropdown
+├── hooks/
+│   └── useChat.ts           # All chat state & business logic
+├── lib/
+│   ├── api.ts               # Backend API calls (fetch wrappers)
+│   └── sse.ts               # SSE stream event parser
+├── types/
+│   └── chat.ts              # Shared TypeScript types
+└── constants/
+    └── models.ts            # Available model list
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Environment Variables
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Create `.env.local` in this directory:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
 
-## Learn More
+## Development
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm install
+npm run dev      # http://localhost:3000
+npm run build    # production build
+npm run lint     # ESLint
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Supported Models
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Model ID | Display Name |
+|---|---|
+| `deepseek-chat` | DeepSeek |
+| `gemini-3-flash` | Gemini |
+| `qwen-plus` | Qwen |
+| `claude-sonnet-4-6` | Claude |
 
-## Deploy on Vercel
+## Key Design Decisions
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **`app/page.tsx` is a thin composition layer** — all state lives in `useChat`, all UI in `components/`
+- **`@/` path alias** maps to `frontend/` root (configured in `tsconfig.json`)
+- **`"use client"` is added only where needed** — components using hooks or browser APIs
+- **Unidirectional dependency** — `types` → `constants` → `lib` → `hooks` → `components` → `app`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## SSE Event Types
+
+The frontend parses three event types from the backend stream:
+
+```ts
+{ type: "text",       content: string }             // append text to message
+{ type: "tool_start", tool: string, query: string } // add a thinking step
+{ type: "tool_end",   snippet: string }             // mark step as done
+```
