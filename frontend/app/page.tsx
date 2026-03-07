@@ -8,6 +8,13 @@ import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+const MODELS = [
+  { id: "deepseek-chat",    label: "DeepSeek" },
+  { id: "gemini-3-flash",  label: "Gemini" },
+  { id: "qwen-plus",       label: "Qwen" },
+  { id: "claude-sonnet-4-6", label: "Claude" },
+];
+
 // ─── SSE event types ──────────────────────────────────────────────────────────
 
 type TextEvent      = { type: "text";       content: string };
@@ -188,6 +195,49 @@ function InputBox({ input, isStreaming, setInput, handleSend, uploadedFile, onUp
   );
 }
 
+// ─── ModelDropdown ────────────────────────────────────────────────────────────
+
+function ModelDropdown({ selectedModel, onSelect }: { selectedModel: string; onSelect: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const current = MODELS.find((m) => m.id === selectedModel) ?? MODELS[0];
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+        <span className="text-sm font-semibold text-gray-900">{current.label}</span>
+        <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-gray-400" stroke="currentColor" strokeWidth="2.5">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1 w-44 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-50">
+          {MODELS.map((m) => (
+            <button key={m.id} onClick={() => { onSelect(m.id); setOpen(false); }}
+              className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 transition-colors ${
+                m.id === selectedModel ? "text-gray-900 font-medium" : "text-gray-600"
+              }`}>
+              {m.label}
+              {m.id === selectedModel && (
+                <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-gray-900" stroke="currentColor" strokeWidth="2.5">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
 function Sidebar({
@@ -275,6 +325,7 @@ export default function ChatPage() {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [activeThreadId, setActiveThreadId] = useState(() => crypto.randomUUID());
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [selectedModel, setSelectedModel] = useState(MODELS[0].id);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const fetchThreads = useCallback(async () => {
@@ -329,7 +380,7 @@ export default function ChatPage() {
     const response = await fetch(`${API_URL}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ thread_id: activeThreadId, message: userMessage.content }),
+      body: JSON.stringify({ thread_id: activeThreadId, message: userMessage.content, model: selectedModel }),
     });
 
     if (!response.body) { setIsStreaming(false); return; }
@@ -402,8 +453,8 @@ export default function ChatPage() {
       />
 
       <div className="flex flex-col flex-1 min-w-0">
-        <header className="py-3 px-4 flex justify-center sticky top-0 bg-white z-10">
-          <span className="text-sm font-medium text-gray-700">Agent</span>
+        <header className="py-2.5 px-4 flex items-center sticky top-0 bg-white z-10">
+          <ModelDropdown selectedModel={selectedModel} onSelect={setSelectedModel} />
         </header>
 
         <main className={`flex-1 overflow-y-auto overflow-x-hidden ${!hasConversation ? "flex items-center justify-center" : ""}`}>

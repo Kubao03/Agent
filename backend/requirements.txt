@@ -13,6 +13,7 @@ langchain==1.2.10
 langchain-core==1.2.17
 langchain-openai==1.1.10
 langchain-google-genai==4.2.1
+langchain-anthropic
 langchain-community==0.4.1
 
 # Tools
