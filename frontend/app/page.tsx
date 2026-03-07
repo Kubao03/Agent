@@ -175,7 +175,7 @@ function InputBox({ input, isStreaming, setInput, handleSend, uploadedFile, onUp
         <textarea rows={1}
           className="w-full pl-12 pr-12 py-3.5 bg-white border border-gray-200 rounded-2xl focus:ring-2 focus:ring-gray-300/50 focus:border-gray-400 transition-all outline-none text-gray-800 placeholder-gray-400 resize-none hover:border-gray-300 min-h-[52px] text-sm"
           value={input}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); handleSend(); } }}
           onChange={(e) => setInput(e.target.value)}
           placeholder="给 Agent 发送消息..."
         />
