@@ -1,7 +1,6 @@
 import os
 
 from dotenv import load_dotenv
-from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 
@@ -42,13 +41,6 @@ MODEL_CONFIGS: dict = {
             model="qwen-plus",
             api_key=os.getenv("DASHSCOPE_API_KEY"),
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-        ),
-    },
-    "claude-sonnet-4-6": {
-        "label": "Claude",
-        "llm": ChatAnthropic(
-            model="claude-sonnet-4-6",
-            api_key=os.getenv("CLAUDE_API_KEY"),
         ),
     },
 }

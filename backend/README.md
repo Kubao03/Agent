@@ -134,4 +134,3 @@ data: [DONE]
 | `deepseek-chat` | DeepSeek |
 | `gemini-3-flash` | Google |
 | `qwen-plus` | Alibaba (DashScope) |
-| `claude-sonnet-4-6` | Anthropic |

@@ -10,7 +10,7 @@ A full-stack AI chat application with multi-model support, tool calling, streami
 |---|---|
 | Frontend | Next.js 16, TypeScript, Tailwind CSS v4 |
 | Backend | FastAPI, Python 3.11 |
-| AI Models | DeepSeek / Gemini / Qwen / Claude (switchable) |
+| AI Models | DeepSeek / Gemini / Qwen (switchable) |
 | Agent | LangChain + LangGraph (ReAct) |
 | Memory | PostgreSQL + LangGraph checkpointer |
 | RAG | pgvector + DashScope embeddings |
@@ -18,7 +18,7 @@ A full-stack AI chat application with multi-model support, tool calling, streami
 
 ## Features
 
-- **Multi-model switching** — DeepSeek, Gemini, Qwen, Claude selectable per conversation
+- **Multi-model switching** — DeepSeek, Gemini, Qwen selectable per conversation
 - **Streaming responses** — token-by-token output via SSE
 - **Tool calling** — agent autonomously uses search, Wikipedia, time, and document tools
 - **Thinking process UI** — collapsible panel showing tool calls in real time
