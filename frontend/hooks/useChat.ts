@@ -11,6 +11,7 @@ export function useChat() {
   const [messages, setMessages]                       = useState<Message[]>([]);
   const [isStreaming, setIsStreaming]                 = useState(false);
   const [uploadedFile, setUploadedFile]               = useState<string | undefined>();
+  const [fileProcessing, setFileProcessing]           = useState(false);
   const [threads, setThreads]                         = useState<Thread[]>([]);
   const [activeThreadId, setActiveThreadId]           = useState(() => crypto.randomUUID());
   const [sidebarCollapsed, setSidebarCollapsed]       = useState(false);
@@ -60,7 +61,10 @@ export function useChat() {
   }, [activeThreadId, handleNew]);
 
   const handleUpload = useCallback(async (file: File) => {
-    const data = await api.uploadFile(activeThreadId, file);
+    const data = await api.uploadFile(activeThreadId, file, (status) => {
+      setFileProcessing(status === "processing");
+    });
+    setFileProcessing(false);
     if (!data.error) setUploadedFile(data.filename);
   }, [activeThreadId]);
 
@@ -158,6 +162,7 @@ export function useChat() {
     messages,
     isStreaming,
     uploadedFile,
+    fileProcessing,
     threads,
     activeThreadId,
     sidebarCollapsed, setSidebarCollapsed,

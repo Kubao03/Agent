@@ -21,12 +21,27 @@ export async function deleteThread(threadId: string): Promise<void> {
 export async function uploadFile(
   threadId: string,
   file: File,
+  onProgress?: (status: "processing" | "done" | "error") => void,
 ): Promise<{ filename?: string; error?: string }> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("thread_id", threadId);
   const res = await fetch(`${API_URL}/api/upload`, { method: "POST", body: formData });
-  return res.json();
+  const data = await res.json();
+
+  if (data.status === "processing") {
+    onProgress?.("processing");
+    // 轮询直到处理完成
+    while (true) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const poll = await fetch(`${API_URL}/api/upload/status/${threadId}`);
+      const s = await poll.json();
+      if (s.status === "done") { onProgress?.("done"); return { filename: s.filename }; }
+      if (s.status === "error") { onProgress?.("error"); return { error: s.error }; }
+    }
+  }
+
+  return data;
 }
 
 export type StreamChatParams = {

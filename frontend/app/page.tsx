@@ -12,6 +12,7 @@ export default function ChatPage() {
     messages,
     isStreaming,
     uploadedFile,
+    fileProcessing,
     threads,
     activeThreadId,
     sidebarCollapsed, setSidebarCollapsed,
@@ -22,7 +23,7 @@ export default function ChatPage() {
   } = useChat();
 
   const inputBoxProps = {
-    input, isStreaming, setInput, handleSend,
+    input, isStreaming, fileProcessing, setInput, handleSend,
     onAbort: handleAbort, uploadedFile, onUpload: handleUpload,
   };
   const hasConversation = messages.length > 0;

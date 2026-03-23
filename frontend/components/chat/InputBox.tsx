@@ -3,23 +3,33 @@
 import { useRef } from "react";
 
 export type InputBoxProps = {
-  input:         string;
-  isStreaming:   boolean;
-  setInput:      (v: string) => void;
-  handleSend:    () => void;
-  onAbort:       () => void;
-  uploadedFile?: string;
-  onUpload:      (file: File) => void;
+  input:           string;
+  isStreaming:     boolean;
+  fileProcessing?: boolean;
+  setInput:        (v: string) => void;
+  handleSend:      () => void;
+  onAbort:         () => void;
+  uploadedFile?:   string;
+  onUpload:        (file: File) => void;
 };
 
 export function InputBox({
-  input, isStreaming, setInput, handleSend, onAbort, uploadedFile, onUpload,
+  input, isStreaming, fileProcessing, setInput, handleSend, onAbort, uploadedFile, onUpload,
 }: InputBoxProps) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   return (
     <div className="flex flex-col gap-2">
-      {uploadedFile && (
+      {fileProcessing && (
+        <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5 w-fit">
+          <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"/>
+          </svg>
+          PDF 解析中...
+        </div>
+      )}
+      {uploadedFile && !fileProcessing && (
         <div className="flex items-center gap-1.5 text-xs text-green-600 bg-green-50 border border-green-200 rounded-lg px-3 py-1.5 w-fit">
           <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth="2">
             <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
