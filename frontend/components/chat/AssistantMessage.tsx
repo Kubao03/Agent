@@ -2,6 +2,9 @@
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import type { Step } from "@/types/chat";
 import { CodeBlock } from "@/components/ui/CodeBlock";
 import { ThinkingPanel } from "./ThinkingPanel";
@@ -34,7 +37,8 @@ export function AssistantMessage({ content, steps, isStreaming }: AssistantMessa
           prose-table:text-sm prose-th:text-gray-900 prose-td:text-gray-700"
         >
           <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
+            remarkPlugins={[remarkGfm, remarkMath]}
+            rehypePlugins={[rehypeKatex]}
             components={{
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               code({ inline, className, children, ...props }: any) {
