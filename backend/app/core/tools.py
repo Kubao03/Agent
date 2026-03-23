@@ -7,7 +7,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langchain_tavily import TavilySearch
 
-from app.core.rag import get_vectorstore
+from app.core.rag import hybrid_search
 
 search_tool = TavilySearch(
     max_results=3,
@@ -27,11 +27,8 @@ def get_current_time() -> str:
 @tool
 def search_documents(query: str, config: RunnableConfig) -> str:
     """从用户上传的文档中搜索相关内容。当用户询问关于已上传文件的问题时优先使用。"""
-    vs = get_vectorstore()
-    if vs is None:
-        return "向量数据库尚未初始化，请稍后再试。"
     thread_id = config.get("configurable", {}).get("thread_id", "")
-    results = vs.similarity_search(query, k=3, filter={"thread_id": thread_id})
+    results = hybrid_search(query, thread_id, k=5)
     if not results:
         return "没有找到相关文档内容，请先上传文件。"
     return "\n\n".join([
