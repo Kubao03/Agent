@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
+from openai import OpenAI
 
 load_dotenv()
 
@@ -46,3 +47,9 @@ MODEL_CONFIGS: dict = {
 }
 
 DEFAULT_MODEL: str = "deepseek-chat"
+
+# ── Qwen Vision client（用于 PDF OCR）────────────────────────────────────────
+QWEN_VISION_CLIENT = OpenAI(
+    api_key=os.getenv("DASHSCOPE_API_KEY"),
+    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+)

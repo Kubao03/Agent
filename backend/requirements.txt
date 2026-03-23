@@ -26,3 +26,4 @@ langchain-text-splitters
 dashscope
 pypdf
 python-multipart
+pymupdf
