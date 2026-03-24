@@ -165,6 +165,18 @@ export function useChat() {
     } catch (e: unknown) {
       if ((e as Error)?.name !== "AbortError") console.error(e);
     } finally {
+      // 断连或出错时关闭所有 pending tool steps
+      setMessages((prev) => {
+        const updated = [...prev];
+        const last = updated[updated.length - 1];
+        if (last?.role === "assistant" && last.steps?.some((s) => !s.done)) {
+          updated[updated.length - 1] = {
+            ...last,
+            steps: last.steps.map((s) => s.done ? s : { ...s, done: true }),
+          };
+        }
+        return updated;
+      });
       setIsStreaming(false);
       abortControllerRef.current = null;
     }

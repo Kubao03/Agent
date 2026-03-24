@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -11,12 +12,17 @@ from app.config import CORS_ORIGINS, DATABASE_URL
 from app.core.agent import create_agents
 from app.core.rag import init_vectorstore
 
+logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_vectorstore(DATABASE_URL)
+    # 在线程池里执行，避免同步 psycopg.connect() 阻塞事件循环
+    try:
+        await asyncio.to_thread(init_vectorstore, DATABASE_URL)
+    except Exception as e:
+        logger.warning(f"[STARTUP] vectorstore init failed, RAG unavailable: {e}")
 
     pool = AsyncConnectionPool(DATABASE_URL, kwargs={"autocommit": True}, open=False)
     await pool.open()

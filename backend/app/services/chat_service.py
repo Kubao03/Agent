@@ -2,6 +2,7 @@ import logging
 
 from fastapi import Request
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
+from langchain.agents.middleware.tool_call_limit import ToolCallLimitExceededError
 from langgraph.errors import GraphRecursionError
 
 from app.models.events import TextEvent, ToolEndEvent, ToolStartEvent, sse
@@ -17,7 +18,8 @@ async def stream_agent_response(
     request: Request,
 ):
     """Async generator yielding SSE-formatted strings for the chat stream."""
-    config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 50}
+    # run_limit=5，适当放宽给模型生成最终回答的步骤空间
+    config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 30}
     user_content = message
     if uploaded_file:
         user_content = f"[用户已上传文件：{uploaded_file}]\n{message}"
@@ -60,8 +62,11 @@ async def stream_agent_response(
                         logger.info(f"[TOOL RESULT] {snippet!r}")
                         yield sse(ToolEndEvent(snippet=snippet))
 
+    except ToolCallLimitExceededError:
+        logger.warning(f"[CHAT] tool call limit reached thread={thread_id[:8]}")
+        yield sse(TextEvent(content="\n\n（已达到工具调用上限，以上是目前收集到的信息。）"))
     except GraphRecursionError:
         logger.warning(f"[CHAT] recursion limit reached thread={thread_id[:8]}")
-        yield sse(TextEvent(content="\n\n（已达到工具调用上限，以上是目前收集到的信息。）"))
+        yield sse(TextEvent(content="\n\n（执行步骤超出上限，以上是目前收集到的信息。）"))
 
     yield "data: [DONE]\n\n"
