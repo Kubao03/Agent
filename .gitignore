@@ -9,5 +9,13 @@ frontend/.next/
 frontend/.env.local
 frontend/.env
 
+# eval
+backend/eval/
+
+
+# claude
+.claude
+CLAUDE.md
+
 # MacOS
 .DS_Store
