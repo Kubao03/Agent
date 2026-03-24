@@ -43,6 +43,9 @@ async def get_thread_messages(thread_id: str, request: Request):
     pending_steps: list = []
 
     for msg in raw_messages:
+        if isinstance(msg, HumanMessage) and msg.additional_kwargs.get("lc_source") == "summarization":
+            continue  # SummarizationMiddleware 注入的摘要消息，不展示给用户
+
         if isinstance(msg, HumanMessage):
             content = msg.content if isinstance(msg.content, str) else ""
             uploaded_file = None

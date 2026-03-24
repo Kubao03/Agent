@@ -111,7 +111,20 @@ export function useChat() {
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
           const raw = line.slice(6).trim();
-          if (raw === "[DONE]") { isDone = true; break; }
+          if (raw === "[DONE]") {
+            isDone = true;
+            // 关闭所有还在 pending 的 tool call（被中断时 tool_end 未收到）
+            setMessages((prev) => {
+              const updated = [...prev];
+              const last = { ...updated[updated.length - 1] };
+              if (last.steps?.some((s) => !s.done)) {
+                last.steps = last.steps.map((s) => s.done ? s : { ...s, done: true });
+                updated[updated.length - 1] = last;
+              }
+              return updated;
+            });
+            break;
+          }
 
           const ev = parseSSEEvent(raw);
           if (!ev) continue;
