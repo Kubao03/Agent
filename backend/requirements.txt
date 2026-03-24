@@ -27,4 +27,3 @@ dashscope
 pypdf
 python-multipart
 pymupdf
-rank-bm25

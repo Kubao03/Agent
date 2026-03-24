@@ -1,11 +1,9 @@
 import os
-import re
 
 import psycopg
 from langchain_community.embeddings import DashScopeEmbeddings
 from langchain_core.documents import Document
 from langchain_postgres import PGVector
-from rank_bm25 import BM25Okapi
 
 embeddings = DashScopeEmbeddings(
     model="text-embedding-v2",
@@ -25,6 +23,15 @@ def init_vectorstore(db_url: str) -> PGVector:
         collection_name="documents",
         connection=vector_url,
     )
+    # 为全文检索建立 GIN 索引（如已存在则跳过）
+    with psycopg.connect(_db_url) as conn:
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_embedding_fts
+            ON langchain_pg_embedding USING GIN (to_tsvector('simple', document))
+            """
+        )
+        conn.commit()
     return _vectorstore
 
 
@@ -32,38 +39,30 @@ def get_vectorstore() -> PGVector | None:
     return _vectorstore
 
 
-def _tokenize(text: str) -> list[str]:
-    """英文按单词切分，中文按单字切分，用于 BM25。"""
-    return re.findall(r"[a-zA-Z0-9]+|[\u4e00-\u9fff]", text.lower())
-
-
-def _bm25_search(query: str, thread_id: str, k: int = 5) -> list[Document]:
-    """从 PostgreSQL 拉取该会话所有文档块，做内存内 BM25 检索。"""
+def _fts_search(query: str, thread_id: str, k: int = 5) -> list[Document]:
+    """用 PostgreSQL 全文检索（tsvector + GIN 索引）替代内存 BM25。"""
     if _db_url is None:
         return []
+    # 将查询词转为 tsquery：中文按单字、英文按词，都用 simple 字典处理
     with psycopg.connect(_db_url) as conn:
         rows = conn.execute(
             """
-            SELECT e.document, e.cmetadata
+            SELECT e.document, e.cmetadata,
+                   ts_rank(to_tsvector('simple', e.document),
+                           plainto_tsquery('simple', %s)) AS rank
             FROM langchain_pg_embedding e
             JOIN langchain_pg_collection c ON e.collection_id = c.uuid
             WHERE c.name = 'documents'
               AND e.cmetadata->>'thread_id' = %s
+              AND to_tsvector('simple', e.document)
+                  @@ plainto_tsquery('simple', %s)
+            ORDER BY rank DESC
+            LIMIT %s
             """,
-            (thread_id,),
+            (query, thread_id, query, k),
         ).fetchall()
 
-    if not rows:
-        return []
-
-    docs = [Document(page_content=row[0], metadata=row[1]) for row in rows]
-    tokenized_corpus = [_tokenize(doc.page_content) for doc in docs]
-    bm25 = BM25Okapi(tokenized_corpus)
-
-    query_tokens = _tokenize(query)
-    scores = bm25.get_scores(query_tokens)
-    top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:k]
-    return [docs[i] for i in top_indices if scores[i] > 0]
+    return [Document(page_content=row[0], metadata=row[1]) for row in rows]
 
 
 def _reciprocal_rank_fusion(
@@ -86,10 +85,10 @@ def _reciprocal_rank_fusion(
 
 
 def hybrid_search(query: str, thread_id: str, k: int = 5) -> list[Document]:
-    """混合检索：向量相似度 + BM25 关键词，用 RRF 融合结果。"""
+    """混合检索：向量相似度 + PostgreSQL 全文检索，用 RRF 融合结果。"""
     vs = get_vectorstore()
     if vs is None:
         return []
     vector_results = vs.similarity_search(query, k=k, filter={"thread_id": thread_id})
-    bm25_results = _bm25_search(query, thread_id, k=k)
+    bm25_results = _fts_search(query, thread_id, k=k)
     return _reciprocal_rank_fusion([vector_results, bm25_results], k=k)
