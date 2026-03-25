@@ -36,8 +36,13 @@ async def lifespan(app: FastAPI):
             CREATE TABLE IF NOT EXISTS threads (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
+                model_id TEXT NOT NULL DEFAULT 'deepseek-chat',
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )
+        """)
+        await conn.execute("""
+            ALTER TABLE threads ADD COLUMN IF NOT EXISTS
+                model_id TEXT NOT NULL DEFAULT 'deepseek-chat'
         """)
 
     app.state.agents = create_agents(checkpointer)

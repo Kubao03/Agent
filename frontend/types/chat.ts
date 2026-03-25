@@ -24,5 +24,6 @@ export type Message = {
 export type Thread = {
   id:         string;
   title:      string;
+  model:      string;
   created_at: string;
 };

@@ -43,6 +43,8 @@ export function useChat() {
     setActiveThreadId(id);
     setUploadedFile(undefined);
     setMessages([]);
+    const thread = threads.find((t) => t.id === id);
+    if (thread) setSelectedModel(thread.model);
     try {
       const msgs = await api.getThreadMessages(id);
       setMessages(msgs);
@@ -52,7 +54,7 @@ export function useChat() {
     } catch {
       // silently ignore
     }
-  }, []);
+  }, [threads]);
 
   const handleDelete = useCallback(async (id: string) => {
     await api.deleteThread(id);

@@ -23,8 +23,9 @@ async def chat_endpoint(chat_request: ChatRequest, request: Request):
 
     async with request.app.state.db.connection() as conn:
         await conn.execute(
-            "INSERT INTO threads (id, title) VALUES (%s, %s) ON CONFLICT (id) DO NOTHING",
-            (chat_request.thread_id, chat_request.message[:40]),
+            """INSERT INTO threads (id, title, model_id) VALUES (%s, %s, %s)
+               ON CONFLICT (id) DO UPDATE SET model_id = EXCLUDED.model_id""",
+            (chat_request.thread_id, chat_request.message[:40], model_id),
         )
 
     return StreamingResponse(

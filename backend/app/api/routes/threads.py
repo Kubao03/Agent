@@ -10,10 +10,10 @@ router = APIRouter()
 async def list_threads(request: Request):
     async with request.app.state.db.connection() as conn:
         rows = await conn.execute(
-            "SELECT id, title, created_at FROM threads ORDER BY created_at DESC"
+            "SELECT id, title, model_id, created_at FROM threads ORDER BY created_at DESC"
         )
         records = await rows.fetchall()
-    return [{"id": r[0], "title": r[1], "created_at": r[2].isoformat()} for r in records]
+    return [{"id": r[0], "title": r[1], "model": r[2], "created_at": r[3].isoformat()} for r in records]
 
 
 @router.delete("/threads/{thread_id}")
@@ -29,7 +29,15 @@ async def delete_thread(thread_id: str, request: Request):
 
 @router.get("/threads/{thread_id}/messages")
 async def get_thread_messages(thread_id: str, request: Request):
-    agent = request.app.state.agents[DEFAULT_MODEL]
+    async with request.app.state.db.connection() as conn:
+        row = await conn.execute(
+            "SELECT model_id FROM threads WHERE id = %s", (thread_id,)
+        )
+        record = await row.fetchone()
+    model_id = record[0] if record else DEFAULT_MODEL
+    if model_id not in request.app.state.agents:
+        model_id = DEFAULT_MODEL
+    agent = request.app.state.agents[model_id]
     state = await agent.aget_state({"configurable": {"thread_id": thread_id}})
     raw_messages = state.values.get("messages", []) if state.values else []
 
