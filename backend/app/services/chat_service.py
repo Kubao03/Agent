@@ -47,24 +47,19 @@ async def stream_agent_response(
 
             elif stream_mode == "updates":
                 for node, update in data.items():
-                    if update is None:
+                    if not update:
                         continue
-                    logger.info(f"[UPDATE] node={node} keys={list(update.keys())}")
-                    msgs = update.get("messages", [])
-                    if not msgs:
-                        continue
-                    last = msgs[-1]
-                    logger.info(f"[MSG] type={type(last).__name__} content={str(last.content)[:100]!r}")
-                    if isinstance(last, AIMessage) and last.tool_calls:
-                        for tc in last.tool_calls:
-                            args = tc.get("args", {})
-                            query = args.get("query", str(args)) if isinstance(args, dict) else str(args)
-                            logger.info(f"[TOOL CALL] {tc['name']} query={query!r}")
-                            yield sse(ToolStartEvent(tool=tc["name"], query=query))
-                    elif isinstance(last, ToolMessage):
-                        snippet = str(last.content)[:200] if last.content else ""
-                        logger.info(f"[TOOL RESULT] {snippet!r}")
-                        yield sse(ToolEndEvent(snippet=snippet))
+                    for msg in update.get("messages", []):
+                        if isinstance(msg, AIMessage) and msg.tool_calls:
+                            for tc in msg.tool_calls:
+                                args = tc.get("args", {})
+                                query = args.get("query", str(args)) if isinstance(args, dict) else str(args)
+                                logger.info(f"[TOOL CALL] {node}/{tc['name']} query={query!r}")
+                                yield sse(ToolStartEvent(tool=tc["name"], query=query))
+                        elif isinstance(msg, ToolMessage):
+                            snippet = str(msg.content)[:200] if msg.content else ""
+                            logger.info(f"[TOOL RESULT] {node} {snippet!r}")
+                            yield sse(ToolEndEvent(snippet=snippet))
 
     except ToolCallLimitExceededError:
         logger.warning(f"[CHAT] tool call limit reached thread={thread_id[:8]}")
