@@ -25,10 +25,10 @@ def get_current_time() -> str:
 
 
 @tool
-def search_documents(query: str, config: RunnableConfig) -> str:
+async def search_documents(query: str, config: RunnableConfig) -> str:
     """从用户上传的文档中搜索相关内容。当用户询问关于已上传文件的问题时优先使用。"""
     thread_id = config.get("configurable", {}).get("thread_id", "")
-    results = hybrid_search(query, thread_id, k=5)
+    results = await hybrid_search(query, thread_id, k=5)
     if not results:
         return "没有找到相关文档内容，请先上传文件。"
     return "\n\n".join([

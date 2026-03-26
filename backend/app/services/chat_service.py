@@ -37,9 +37,13 @@ async def stream_agent_response(
             if stream_mode == "messages":
                 token, _ = data
                 if isinstance(token, AIMessageChunk) and not token.tool_call_chunks:
-                    for block in token.content_blocks:
-                        if block.get("type") == "text" and block.get("text"):
-                            yield sse(TextEvent(content=block["text"]))
+                    content = token.content
+                    if isinstance(content, str) and content:
+                        yield sse(TextEvent(content=content))
+                    elif isinstance(content, list):
+                        for block in content:
+                            if block.get("type") == "text" and block.get("text"):
+                                yield sse(TextEvent(content=block["text"]))
 
             elif stream_mode == "updates":
                 for node, update in data.items():

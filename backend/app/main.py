@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -18,14 +17,13 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 在线程池里执行，避免同步 psycopg.connect() 阻塞事件循环
-    try:
-        await asyncio.to_thread(init_vectorstore, DATABASE_URL)
-    except Exception as e:
-        logger.warning(f"[STARTUP] vectorstore init failed, RAG unavailable: {e}")
-
     pool = AsyncConnectionPool(DATABASE_URL, kwargs={"autocommit": True}, open=False)
     await pool.open()
+
+    try:
+        await init_vectorstore(DATABASE_URL, pool)
+    except Exception as e:
+        logger.warning(f"[STARTUP] vectorstore init failed, RAG unavailable: {e}")
     app.state.db = pool
 
     checkpointer = AsyncPostgresSaver(conn=pool)
