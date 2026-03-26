@@ -22,6 +22,7 @@ async def init_vectorstore(db_url: str, pool: AsyncConnectionPool) -> PGVector:
         embeddings=embeddings,
         collection_name="documents",
         connection=vector_url,
+        async_mode=True,
     )
     # 为全文检索建立 GIN 索引（如已存在则跳过）
     async with pool.connection() as conn:
