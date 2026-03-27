@@ -83,11 +83,13 @@ def _extract_pages(pdf_content: bytes) -> list[tuple[str, int]]:
     return results
 
 
-def process_pdf(content: bytes, filename: str, thread_id: str) -> int:
+async def process_pdf(content: bytes, filename: str, thread_id: str) -> int:
     """Chunk and embed a PDF into the vectorstore. Returns number of chunks stored."""
+    import asyncio
+
     vs = get_vectorstore()
 
-    pages = _extract_pages(content)
+    pages = await asyncio.to_thread(_extract_pages, content)
     docs = [
         Document(
             page_content=text,
@@ -102,5 +104,5 @@ def process_pdf(content: bytes, filename: str, thread_id: str) -> int:
     )
     chunks = splitter.split_documents(docs)
 
-    vs.add_documents(chunks)
+    await vs.aadd_documents(chunks)
     return len(chunks)

@@ -24,7 +24,11 @@ async def init_vectorstore(db_url: str, pool: AsyncConnectionPool) -> PGVector:
         connection=vector_url,
         async_mode=True,
     )
-    # 为全文检索建立 GIN 索引（如已存在则跳过）
+    # 确保 pgvector 扩展、数据表、collection 记录在启动时就建好
+    await _vectorstore.acreate_vector_extension()
+    await _vectorstore.acreate_tables_if_not_exists()
+    await _vectorstore.acreate_collection()
+    # 为全文检索建立 GIN 索引（幂等）
     async with pool.connection() as conn:
         await conn.execute(
             """
